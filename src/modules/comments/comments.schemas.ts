@@ -20,6 +20,6 @@ export const deleteCommentRequestSchema = z.object({
 
 export const deleteCommentsRequestSchema = z.object({
 	body: z.object({
-		ids: z.array(z.string().trim().min(1)),
+		postIds: z.array(z.number()),
 	}),
 });

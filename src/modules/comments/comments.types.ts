@@ -29,5 +29,5 @@ export type GetCommentsResult = {
 };
 
 export type DeleteCommentsInput = {
-	ids: string[];
+	postIds: number[];
 };

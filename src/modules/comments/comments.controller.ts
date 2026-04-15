@@ -24,7 +24,7 @@ export const deleteComment: RequestHandler = asyncHandler(async (req, res) => {
 });
 
 export const deleteComments: RequestHandler = asyncHandler(async (req, res) => {
-	const commentIds = (req.body as DeleteCommentsInput).ids;
-	await commentsService.deleteComments(commentIds);
+	const postIds = (req.body as DeleteCommentsInput).postIds;
+	await commentsService.deleteCommentsByPostIds(postIds);
 	res.status(httpStatus.NO_CONTENT).send({});
 });

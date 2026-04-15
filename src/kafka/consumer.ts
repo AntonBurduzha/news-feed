@@ -8,7 +8,7 @@ class KafkaConsumer {
 	private readonly consumer: Consumer;
 	private readonly groupId: string;
 
-	constructor(clientId: string, brokers: string[], groupId: string, partitionIndex: number) {
+	constructor(clientId: string, brokers: string[], groupId: string, partitionIndex?: number) {
 		this.kafka = new Kafka({
 			clientId,
 			brokers,
@@ -17,7 +17,7 @@ class KafkaConsumer {
 		this.groupId = groupId;
 		this.consumer = this.kafka.consumer({
 			groupId,
-			...(partitionIndex !== null
+			...(partitionIndex !== undefined
 				? { partitionAssigners: [createFollowerPartitionAssigner(partitionIndex)] }
 				: {}),
 		});
@@ -33,7 +33,10 @@ class KafkaConsumer {
 		logger.info({ groupId: this.groupId }, 'Kafka consumer disconnected');
 	}
 
-	async subscribeAndListen(topic: string): Promise<void> {
+	async subscribeAndListen(
+		topic: string,
+		topicCallback: (payload: EachMessagePayload) => Promise<void>,
+	): Promise<void> {
 		await this.consumer.subscribe({ topic, fromBeginning: false });
 
 		logger.info({ topic, groupId: this.groupId }, 'Consumer subscribed to topic');
@@ -54,6 +57,7 @@ class KafkaConsumer {
 					},
 					'Consumed Kafka message',
 				);
+				await topicCallback(payload);
 			},
 		});
 	}

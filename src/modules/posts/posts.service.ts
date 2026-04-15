@@ -156,10 +156,21 @@ class PostService {
 	}
 
 	async deletePost(id: number): Promise<void> {
-		const deleted = await this.postRepository.delete(id);
-		if (!deleted) {
-			throw new NotFoundError(`Post ${id} was not found`);
-		}
+		await withTransaction(async client => {
+			const postIsDeleted = await this.postRepository.delete(id, client);
+			if (!postIsDeleted) {
+				throw new NotFoundError(`Post ${id} was not found`);
+			}
+			const message = {
+				topic: KafkaTopics.CommentsDelete,
+				payload: {
+					key: String(id),
+					value: JSON.stringify({ postIds: [id] }),
+				},
+			};
+			await this.messagesOutboxRepository.create(message, client);
+			logger.info({ postIds: [id] }, 'Post deleted message fanned out via Kafka');
+		});
 	}
 }
 

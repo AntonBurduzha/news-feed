@@ -54,9 +54,10 @@ class PostRepository {
 		return rows[0] ?? null;
 	}
 
-	async delete(id: number): Promise<boolean> {
+	async delete(id: number, client?: PoolClient): Promise<boolean> {
+		const connection = client ?? db;
 		const query = 'DELETE FROM posts WHERE id = $1;';
-		const { rowCount } = await db.query(query, [id]);
+		const { rowCount } = await connection.query(query, [id]);
 		return (rowCount ?? 0) > 0;
 	}
 }

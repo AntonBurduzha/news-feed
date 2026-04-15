@@ -46,10 +46,10 @@ class CommentsService {
 		}
 	}
 
-	async deleteComments(ids: string[]): Promise<void> {
-		const deleted = await commentsRepository.deleteMany(ids);
+	async deleteCommentsByPostIds(postIds: number[]): Promise<void> {
+		const deleted = await commentsRepository.deleteMany(postIds);
 		if (!deleted) {
-			throw new NotFoundError(`Comments ${ids.join(', ')} were not found`);
+			throw new NotFoundError(`Comments for post IDs ${postIds.join(', ')} were not found`);
 		}
 	}
 }

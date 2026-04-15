@@ -29,7 +29,7 @@ function parseArgs(): { followerId: number } {
 async function run(): Promise<void> {
 	const { followerId } = parseArgs();
 
-	logger.info({ followerId }, 'Starting dedicated consumer for follower');
+	logger.info({ followerId }, 'Starting posts-create-consumer for follower');
 
 	const partitionIndex = await followerPartitionsService.getPartitionForFollower(followerId);
 	if (partitionIndex === null) {
@@ -47,7 +47,9 @@ async function run(): Promise<void> {
 		partitionIndex,
 	);
 	await consumer.connect();
-	await consumer.subscribeAndListen(KafkaTopics.PostsCreate);
+	await consumer.subscribeAndListen(KafkaTopics.PostsCreate, async _payload => {
+		// TODO: Implement posts-create-consumer logic
+	});
 
 	const disconnectAndExit = async (signal?: string): Promise<void> => {
 		try {
