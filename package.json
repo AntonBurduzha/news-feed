@@ -6,7 +6,7 @@
 	"main": "./dist/src/index.js",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
-		"consumer": "tsx watch consumer.ts --",
+		"worker:posts-create": "tsx watch workers/posts-create.ts",
 		"worker:outbox": "tsx watch workers/outbox-relay.ts",
 		"worker:outbox-cleaner": "tsx watch workers/outbox-cleaner.ts",
 		"worker:comments-delete": "tsx watch workers/comments-delete.ts",
