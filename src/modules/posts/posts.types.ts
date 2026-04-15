@@ -1,6 +1,7 @@
 export type GetPostsQueryParams = {
 	cursor?: string;
 	limit?: number;
+	userId: number;
 };
 
 export type Post = {

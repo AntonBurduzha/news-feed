@@ -12,28 +12,29 @@ class PostRepository {
 		return rows[0];
 	}
 
-	async findAll(limit: number = 10, cursor: string | null): Promise<PostRow[]> {
+	async findAll(userId: number, limit: number | null, cursor: string | null): Promise<PostRow[]> {
 		let query: string;
-		let queryParams: [string, number, number] | [number];
+		let queryParams: [number, string, number, ...number[]] | [number, ...number[]];
 		if (cursor) {
 			const decodedCursor = Buffer.from(cursor, 'base64').toString('utf-8');
 			const cursorObj = JSON.parse(decodedCursor) as { createdAt: string; id: number };
 			query = `
 				SELECT id, user_id, content, created_at, likes_count, comments_count 
 				FROM posts 
-				WHERE (created_at, id) < ($1::timestamptz, $2)
+				WHERE (created_at, id) < ($2::timestamptz, $3) AND user_id = $1
 				ORDER BY created_at DESC, id DESC 
-				LIMIT $3
+				${limit ? `LIMIT $4` : ''}
     	`;
-			queryParams = [cursorObj.createdAt, cursorObj.id, limit];
+			queryParams = [userId, cursorObj.createdAt, cursorObj.id, ...(limit ? [limit] : [])];
 		} else {
 			query = `
 				SELECT id, user_id, content, created_at, likes_count, comments_count 
 				FROM posts 
+				WHERE user_id = $1
 				ORDER BY created_at DESC, id DESC 
-				LIMIT $1
+				${limit ? `LIMIT $2` : ''}
     	`;
-			queryParams = [limit];
+			queryParams = [userId, ...(limit ? [limit] : [])];
 		}
 		logger.info({ query, queryParams }, 'Getting posts');
 		const { rows } = await db.query<PostRow>(query, queryParams);

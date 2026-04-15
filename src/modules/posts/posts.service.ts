@@ -121,9 +121,10 @@ class PostService {
 	}
 
 	async getPosts(query: GetPostsQueryParams): Promise<GetPostsResult> {
-		const limit = query.limit ?? 10;
+		const limit = query.limit ?? null;
 		const cursor = query.cursor ?? null;
-		const result = await this.postRepository.findAll(limit, cursor);
+		const userId = query.userId;
+		const result = await this.postRepository.findAll(userId, limit, cursor);
 		let nextCursor = null;
 		if (result.length > 0) {
 			const lastRow = result[result.length - 1];
@@ -135,7 +136,7 @@ class PostService {
 		}
 		return {
 			posts: result.map(mapPost),
-			nextCursor: cursor && result.length < limit ? null : nextCursor,
+			nextCursor: cursor && limit && result.length < limit ? null : nextCursor,
 		};
 	}
 
