@@ -1,4 +1,5 @@
 export const KafkaTopics = {
-	PostsCreate: 'posts-create',
-	CommentsDelete: 'comments-delete',
+	CreatePost: 'create-post',
+	DeleteComments: 'delete-comments',
+	AppDLQ: 'app-dlq',
 } as const;

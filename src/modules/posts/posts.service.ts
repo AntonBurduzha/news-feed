@@ -111,7 +111,7 @@ class PostService {
 				return true;
 			})
 			.map(({ followerId, partition }) => ({
-				topic: KafkaTopics.PostsCreate,
+				topic: KafkaTopics.CreatePost,
 				payload: {
 					key: String(followerId),
 					value: JSON.stringify(post),
@@ -163,7 +163,7 @@ class PostService {
 				throw new NotFoundError(`Post ${id} was not found`);
 			}
 			const message = {
-				topic: KafkaTopics.CommentsDelete,
+				topic: KafkaTopics.DeleteComments,
 				payload: {
 					key: String(id),
 					value: JSON.stringify({ postIds: [id] }),

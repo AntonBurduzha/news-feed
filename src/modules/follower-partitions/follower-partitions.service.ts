@@ -58,7 +58,7 @@ class FollowerPartitionsService {
 		}
 
 		const unassignedIndex = await this.repository.findUnassignedPartitionIndex(
-			kafkaAdmin.getPartitionCount(KafkaTopics.PostsCreate),
+			kafkaAdmin.getPartitionCount(KafkaTopics.CreatePost),
 		);
 
 		if (unassignedIndex !== null) {
@@ -70,11 +70,11 @@ class FollowerPartitionsService {
 			return unassignedIndex;
 		}
 
-		const newPartitionIndex = kafkaAdmin.getPartitionCount(KafkaTopics.PostsCreate);
-		const newTotalCount = kafkaAdmin.getPartitionCount(KafkaTopics.PostsCreate) + 1;
+		const newPartitionIndex = kafkaAdmin.getPartitionCount(KafkaTopics.CreatePost);
+		const newTotalCount = kafkaAdmin.getPartitionCount(KafkaTopics.CreatePost) + 1;
 
 		try {
-			await kafkaAdmin.createPartitions(KafkaTopics.PostsCreate, newTotalCount);
+			await kafkaAdmin.createPartitions(KafkaTopics.CreatePost, newTotalCount);
 			await this.persistAssignment(followerId, newPartitionIndex);
 
 			return newPartitionIndex;

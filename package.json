@@ -6,10 +6,10 @@
 	"main": "./dist/src/index.js",
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
-		"worker:posts-create": "tsx watch workers/posts-create.ts",
+		"worker:create-post": "tsx watch workers/create-post.ts",
 		"worker:outbox": "tsx watch workers/outbox-relay.ts",
 		"worker:outbox-cleaner": "tsx watch workers/outbox-cleaner.ts",
-		"worker:comments-delete": "tsx watch workers/comments-delete.ts",
+		"worker:delete-comments": "tsx watch workers/delete-comments.ts",
 		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
 		"start": "node dist/src/index.js",
 		"migrate:postgres": "node-pg-migrate up -m ./src/db/postgres/migrations --tsx --tsconfig tsconfig.json",

@@ -21,7 +21,7 @@ class PostRepository {
 			query = `
 				SELECT id, user_id, content, created_at, likes_count, comments_count 
 				FROM posts 
-				WHERE (created_at, id) < ($2::timestamptz, $3) AND user_id = $1
+				WHERE (created_at, id) < ($2::timestamptz, $3) AND user_id = $1 
 				ORDER BY created_at DESC, id DESC 
 				${limit ? `LIMIT $4` : ''}
     	`;

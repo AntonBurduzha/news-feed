@@ -8,6 +8,13 @@ type KafkaMessage = {
 	partition?: number;
 };
 
+type KafkaMessageWithDLQ = KafkaMessage & {
+	dlqReason: string;
+	originalTopic: string;
+	originalPartition: number;
+	failedAt: string;
+};
+
 class KafkaProducer {
 	private readonly producer: Producer;
 
@@ -25,7 +32,10 @@ class KafkaProducer {
 		logger.info('Kafka producer disconnected');
 	}
 
-	async sendMessage(topic: string, messages: KafkaMessage[]): Promise<void> {
+	async sendMessage(
+		topic: string,
+		messages: KafkaMessage[] | KafkaMessageWithDLQ[],
+	): Promise<void> {
 		await this.producer.send({
 			topic,
 			compression: CompressionTypes.GZIP,

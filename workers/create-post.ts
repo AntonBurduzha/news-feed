@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 import { KafkaTopics } from '@/kafka/topics';
 import KafkaConsumer from '@/kafka/consumer';
+import { kafkaProducer } from '@/kafka/producer';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 
 // Usage: tsx consumer.ts -- --followerId=1
@@ -47,9 +48,30 @@ async function run(): Promise<void> {
 		partitionIndex,
 	);
 	await consumer.connect();
-	await consumer.subscribeAndListen(KafkaTopics.PostsCreate, async _payload => {
-		// TODO: Implement posts-create-consumer logic
-	});
+	await consumer.subscribeAndListen(
+		KafkaTopics.CreatePost,
+		async ({ message, topic, partition }) => {
+			const { key, value } = message;
+			try {
+				// TODO: Implement posts-create-consumer logic
+			} catch (error) {
+				logger.error(
+					{ err: normalizeError(error) },
+					'Error consuming create post message, sending to DLQ',
+				);
+				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
+					{
+						key: key!.toString(),
+						value: JSON.stringify(value),
+						dlqReason: normalizeError(error).message,
+						originalTopic: topic,
+						originalPartition: partition,
+						failedAt: new Date().toISOString(),
+					},
+				]);
+			}
+		},
+	);
 
 	const disconnectAndExit = async (signal?: string): Promise<void> => {
 		try {

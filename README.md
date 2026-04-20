@@ -46,10 +46,10 @@ Start the API in dev mode: `npm run dev`
 
 #### Kafka / workers
 
-- **posts-create**: `npm run worker:posts-create -- --followerId=<id>` — consumes posts-create events and sends to followers
+- **create-post**: `npm run worker:create-post -- --followerId=<id>` — consumes create-post events and sends to followers
 - **outbox**: `npm run worker:outbox` — relays pending outbox messages to Kafka
 - **outbox-cleaner**: `npm run worker:outbox-cleaner` — cleans outbox data
-- **comments-delete**: `npm run worker:comments-delete` — consumes comment-delete events and applies deletions
+- **delete-comments**: `npm run worker:delete-comments` — consumes delete-comments events and applies deletions
 
 #### Migrations (Postgres)
 

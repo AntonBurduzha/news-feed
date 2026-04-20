@@ -65,7 +65,7 @@ class UserService {
 			const posts = await this.postService.getPosts({ userId: id });
 			const postIds = posts.posts.map(post => post.id);
 			const message = {
-				topic: KafkaTopics.CommentsDelete,
+				topic: KafkaTopics.DeleteComments,
 				payload: {
 					key: String(id),
 					value: JSON.stringify({ postIds }),
