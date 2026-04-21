@@ -24,11 +24,11 @@ class FollowsRepository {
 	}
 
 	async countByFollowerId(followerId: number): Promise<number> {
-		const { rows } = await db.query<{ count: string }>(
-			'SELECT count(*)::text AS count FROM follows WHERE follower_id = $1;',
+		const { rows } = await db.query<{ count: number }>(
+			'SELECT count(*) AS count FROM follows WHERE follower_id = $1;',
 			[followerId],
 		);
-		return parseInt(rows[0].count, 10);
+		return rows[0].count;
 	}
 
 	async delete(id: number): Promise<boolean> {

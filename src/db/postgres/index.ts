@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg';
 import { env } from '@/config/env';
+import { logger } from '@/lib/logger';
 
 export const db = new Pool({
 	host: env.POSTGRES_DB_HOST,
@@ -11,6 +12,16 @@ export const db = new Pool({
 	idleTimeoutMillis: 30_000,
 	connectionTimeoutMillis: 5_000,
 });
+
+export async function checkPostgresConnection(): Promise<void> {
+	try {
+		await db.query('SELECT 1');
+		logger.info('PostgreSQL connection verified');
+	} catch (err) {
+		logger.error({ err }, 'Failed to verify PostgreSQL connection');
+		throw err;
+	}
+}
 
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
 	const client = await db.connect();

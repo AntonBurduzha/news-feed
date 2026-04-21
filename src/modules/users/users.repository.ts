@@ -10,7 +10,7 @@ class UserRepository {
 	}
 
 	async findAll(): Promise<UserRow[]> {
-		const query = 'SELECT id, name, email, avatar_url, created_at FROM users ORDER BY id ASC;';
+		const query = 'SELECT id, name, email, avatar_url, created_at FROM users ORDER BY id;';
 		const { rows } = await db.query<UserRow>(query);
 		return rows;
 	}

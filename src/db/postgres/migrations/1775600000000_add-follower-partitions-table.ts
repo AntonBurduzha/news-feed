@@ -15,19 +15,20 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 			type: 'integer',
 			notNull: true,
 		},
-		created_at: {
-			type: 'timestamp',
-			notNull: true,
-			default: pgm.func('now()'),
-		},
+		created_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 	});
 	pgm.addConstraint('follower_partitions', 'unique_follower_partition', {
 		unique: ['follower_id'],
 	});
-	pgm.createIndex('follower_partitions', 'follower_id');
+	pgm.createIndex('follower_partitions', 'follower_id', {
+		name: 'idx_follower_partitions_follower_id',
+	});
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
 	pgm.dropTable('follower_partitions', { ifExists: true });
-	pgm.dropIndex('follower_partitions', 'follower_id', { ifExists: true });
+	pgm.dropIndex('follower_partitions', 'follower_id', {
+		name: 'idx_follower_partitions_follower_id',
+		ifExists: true,
+	});
 }

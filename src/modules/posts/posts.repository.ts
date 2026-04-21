@@ -7,7 +7,7 @@ class PostRepository {
 	async create(input: CreatePostInput, client?: PoolClient): Promise<PostRow> {
 		const connection = client ?? db;
 		const query =
-			'INSERT INTO posts (user_id, content) VALUES ($1, $2) RETURNING id, user_id, content, likes_count, comments_count, created_at;';
+			'INSERT INTO posts (user_id, content) VALUES ($1, $2) RETURNING id, user_id, content, created_at, updated_at;';
 		const { rows } = await connection.query<PostRow>(query, [input.userId, input.content]);
 		return rows[0];
 	}
@@ -19,7 +19,7 @@ class PostRepository {
 			const decodedCursor = Buffer.from(cursor, 'base64').toString('utf-8');
 			const cursorObj = JSON.parse(decodedCursor) as { createdAt: string; id: number };
 			query = `
-				SELECT id, user_id, content, created_at, likes_count, comments_count 
+				SELECT id, user_id, content, created_at, updated_at 
 				FROM posts 
 				WHERE (created_at, id) < ($2::timestamptz, $3) AND user_id = $1 
 				ORDER BY created_at DESC, id DESC 
@@ -28,7 +28,7 @@ class PostRepository {
 			queryParams = [userId, cursorObj.createdAt, cursorObj.id, ...(limit ? [limit] : [])];
 		} else {
 			query = `
-				SELECT id, user_id, content, created_at, likes_count, comments_count 
+				SELECT id, user_id, content, created_at, updated_at 
 				FROM posts 
 				WHERE user_id = $1
 				ORDER BY created_at DESC, id DESC 
@@ -42,15 +42,14 @@ class PostRepository {
 	}
 
 	async findById(id: number): Promise<PostRow | null> {
-		const query =
-			'SELECT id, user_id, content, likes_count, comments_count, created_at FROM posts WHERE id = $1;';
+		const query = 'SELECT id, user_id, content, created_at, updated_at FROM posts WHERE id = $1;';
 		const { rows } = await db.query<PostRow>(query, [id]);
 		return rows[0] ?? null;
 	}
 
 	async update(id: number, input: UpdatePostInput): Promise<PostRow | null> {
 		const query =
-			'UPDATE posts SET content = $1 WHERE id = $2 RETURNING id, user_id, content, likes_count, comments_count, created_at;';
+			'UPDATE posts SET content = $1 WHERE id = $2 RETURNING id, user_id, content, created_at, updated_at;';
 		const { rows } = await db.query<PostRow>(query, [input.content, id]);
 		return rows[0] ?? null;
 	}

@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 import httpStatus from 'http-status';
 import { asyncHandler } from '@/lib/async-handler';
 import { postService } from './posts.service';
-import type { CreatePostInput, UpdatePostInput, GetPostsQueryParams } from './posts.types';
+import type { CreatePostInput, UpdatePostInput } from './posts.types';
 
 export const createPost: RequestHandler = asyncHandler(async (req, res) => {
 	const postData = req.body as CreatePostInput;
@@ -10,8 +10,12 @@ export const createPost: RequestHandler = asyncHandler(async (req, res) => {
 	res.status(httpStatus.CREATED).json(post);
 });
 
-export const getPosts: RequestHandler = asyncHandler(async (_req, res) => {
-	const result = await postService.getPosts(_req.query as GetPostsQueryParams);
+export const getPosts: RequestHandler = asyncHandler(async (req, res) => {
+	const result = await postService.getPosts({
+		userId: Number(req.query.userId),
+		limit: Number(req.query.limit),
+		cursor: req.query.cursor as string | undefined,
+	});
 	res.json(result);
 });
 

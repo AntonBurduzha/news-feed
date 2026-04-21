@@ -8,18 +8,16 @@ export type Post = {
 	id: number;
 	userId: number;
 	content: string;
-	likesCount: number;
-	commentsCount: number;
 	createdAt: string;
+	updatedAt: string;
 };
 
 export type PostRow = {
 	id: number;
 	user_id: number;
 	content: string;
-	likes_count: number;
-	comments_count: number;
 	created_at: Date;
+	updated_at: Date;
 };
 
 export type GetPostsResult = {

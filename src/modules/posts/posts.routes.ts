@@ -4,12 +4,16 @@ import {
 	createPostRequestSchema,
 	updatePostRequestSchema,
 	postIdRequestSchema,
+	postsQuerySchema,
 } from './posts.schemas';
 import { validate } from '@/middleware/validate';
 
 const router = Router();
 
-router.route('/').post(validate(createPostRequestSchema), createPost).get(getPosts);
+router
+	.route('/')
+	.post(validate(createPostRequestSchema), createPost)
+	.get(validate(postsQuerySchema), getPosts);
 
 router
 	.route('/:id')

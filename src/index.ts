@@ -1,7 +1,8 @@
 import type { Server } from 'node:http';
 import app from '@/app';
 import { env } from '@/config/env';
-import { db } from '@/db/postgres';
+import { db, checkPostgresConnection } from '@/db/postgres';
+// import { initPostgresDB } from '@/db/postgres/init-postgres-db';
 import { kafkaAdmin } from '@/kafka/admin';
 import { connectMongo, disconnectMongo } from '@/db/mongo';
 import { logger } from '@/lib/logger';
@@ -53,6 +54,8 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 }
 
 async function start(): Promise<void> {
+	await checkPostgresConnection();
+	// await initPostgresDB();
 	await connectMongo();
 
 	await kafkaAdmin.connect();

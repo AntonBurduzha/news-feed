@@ -9,6 +9,14 @@ export const createPostRequestSchema = z.object({
 	body: postBodySchema,
 });
 
+export const postsQuerySchema = z.object({
+	query: z.object({
+		cursor: z.string().optional(),
+		limit: z.coerce.number().int().positive().optional(),
+		userId: z.coerce.number().int().positive(),
+	}),
+});
+
 export const updatePostRequestSchema = z.object({
 	body: postBodySchema,
 	params: z.object({

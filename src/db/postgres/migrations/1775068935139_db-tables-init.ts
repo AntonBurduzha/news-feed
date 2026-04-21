@@ -8,7 +8,8 @@ export const up = (pgm: MigrationBuilder): void => {
 		name: { type: 'varchar(255)' },
 		email: { type: 'varchar(255)', notNull: true, unique: true },
 		avatar_url: { type: 'varchar(255)' },
-		created_at: { type: 'timestamp', notNull: true, default: pgm.func('now()') },
+		created_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
+		updated_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 	});
 	pgm.createTable('posts', {
 		id: 'id',
@@ -19,15 +20,21 @@ export const up = (pgm: MigrationBuilder): void => {
 			onDelete: 'CASCADE',
 		},
 		content: { type: 'text', notNull: true },
-		likes_count: { type: 'integer', notNull: true, default: 0 },
-		comments_count: { type: 'integer', notNull: true, default: 0 },
 		created_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
+		updated_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 	});
-	pgm.createIndex('posts', ['created_at', 'user_id'], { name: 'idx_posts_pagination' });
+	pgm.createIndex(
+		'posts',
+		[{ name: 'user_id' }, { name: 'created_at', sort: 'DESC' }, { name: 'id', sort: 'DESC' }],
+		{ name: 'idx_posts_user_id_created_at_id' },
+	);
 };
 
 export const down = (pgm: MigrationBuilder): void => {
-	pgm.dropIndex('posts', ['created_at', 'user_id'], { ifExists: true });
+	pgm.dropIndex('posts', ['user_id', 'created_at', 'id'], {
+		name: 'idx_posts_user_id_created_at_id',
+		ifExists: true,
+	});
 	pgm.dropTable('posts', { ifExists: true });
 	pgm.dropTable('users', { ifExists: true });
 };

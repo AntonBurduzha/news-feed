@@ -20,7 +20,7 @@ class MessagesOutboxRepository {
 			`SELECT id, topic, payload
 			FROM messages_outbox
 			WHERE status = 'pending' AND retry_count < max_retries
-			ORDER BY created_at ASC
+			ORDER BY created_at
 			LIMIT 10
 			FOR UPDATE SKIP LOCKED;
 			`,
@@ -37,7 +37,7 @@ class MessagesOutboxRepository {
 
 	async cleanUpSentMessages(): Promise<void> {
 		await db.query(
-			"DELETE FROM messages_outbox WHERE status = 'sent' AND sent_at < now() - INTERVAL '1 hour';",
+			"DELETE FROM messages_outbox WHERE status = 'sent' AND sent_at < NOW() - INTERVAL '1 hour';",
 		);
 	}
 }

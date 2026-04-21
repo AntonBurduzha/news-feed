@@ -22,9 +22,8 @@ function mapPost(row: PostRow): Post {
 		id: row.id,
 		userId: row.user_id,
 		content: row.content,
-		likesCount: row.likes_count,
-		commentsCount: row.comments_count,
 		createdAt: row.created_at.toISOString(),
+		updatedAt: row.updated_at.toISOString(),
 	};
 }
 
