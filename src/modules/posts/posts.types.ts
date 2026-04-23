@@ -1,23 +1,23 @@
 export type GetPostsQueryParams = {
 	cursor?: string;
 	limit?: number;
-	userId: number;
+	userId: string;
 };
 
 export type Post = {
-	id: number;
-	userId: number;
+	id: string;
+	userId: string;
 	content: string;
 	createdAt: string;
 	updatedAt: string;
 };
 
 export type PostRow = {
-	id: number;
-	user_id: number;
+	id: string;
+	user_id: string;
 	content: string;
-	created_at: Date;
-	updated_at: Date;
+	created_at: string;
+	updated_at: string;
 };
 
 export type GetPostsResult = {
@@ -26,7 +26,7 @@ export type GetPostsResult = {
 };
 
 export type CreatePostInput = {
-	userId: number;
+	userId: string;
 	content: string;
 };
 

@@ -58,12 +58,12 @@ class FollowService {
 		return mapFollow(follow);
 	}
 
-	async getFollowersByFollowingId(followingId: number): Promise<number[]> {
+	async getFollowersByFollowingId(followingId: string): Promise<string[]> {
 		const followers = await this.followsRepository.findFollowersByFollowingId(followingId);
 		return followers;
 	}
 
-	async deleteFollow(id: number): Promise<void> {
+	async deleteFollow(id: string): Promise<void> {
 		const follow = await this.followsRepository.findById(id);
 		if (!follow) {
 			throw new NotFoundError(`Follow ${id} was not found`);

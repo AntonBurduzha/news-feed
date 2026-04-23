@@ -7,21 +7,19 @@ import { kafkaProducer } from '@/kafka/producer';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 
 // Usage: tsx consumer.ts -- --followerId=1
-function parseArgs(): { followerId: number } {
+function parseArgs(): { followerId: string } {
 	const args = process.argv.slice(2);
 
-	let followerId: number | undefined;
+	let followerId: string | undefined;
 
 	for (const arg of args) {
 		if (arg.startsWith('--followerId=')) {
-			followerId = parseInt(arg.split('=')[1], 10);
+			followerId = arg.split('=')[1];
 		}
 	}
 
-	if (followerId === undefined || Number.isNaN(followerId)) {
-		throw new Error(
-			'Missing or invalid --followerId argument. Usage: tsx consumer.ts --followerId=1',
-		);
+	if (followerId === undefined) {
+		throw new Error('Missing --followerId argument. Usage: tsx consumer.ts --followerId=1');
 	}
 
 	return { followerId };

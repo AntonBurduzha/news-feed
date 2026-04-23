@@ -11,15 +11,15 @@ export const createComment: RequestHandler = asyncHandler(async (req, res) => {
 });
 
 export const getComments: RequestHandler = asyncHandler(async (req, res) => {
-	const comments = await commentsService.getComments(
-		req.params.postId as string,
-		req.query as GetCommentsInput,
-	);
+	const { postId } = req.params as { postId: string };
+	const { limit, cursor } = req.query as GetCommentsInput;
+	const comments = await commentsService.getComments(postId, { limit, cursor });
 	res.json(comments);
 });
 
 export const deleteComment: RequestHandler = asyncHandler(async (req, res) => {
-	await commentsService.deleteComment(req.params.id as string);
+	const { id } = req.params as { id: string };
+	await commentsService.deleteComment(id);
 	res.status(httpStatus.NO_CONTENT).send({});
 });
 

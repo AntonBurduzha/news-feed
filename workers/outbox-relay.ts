@@ -2,7 +2,7 @@ import { kafkaProducer } from '@/kafka/producer';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox.service';
-import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.types';
+import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.constants';
 
 let outboxRelayInterval: NodeJS.Timeout | null = null;
 
@@ -31,7 +31,7 @@ async function run(): Promise<void> {
 				}
 				await messagesOutboxService.updateMessageStatus(
 					pendingMessages.map(m => m.id),
-					'sent' as MessageOutboxStatus,
+					MessageOutboxStatus.Sent,
 				);
 			} catch (error) {
 				logger.error(

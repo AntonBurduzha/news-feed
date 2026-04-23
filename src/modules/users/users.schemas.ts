@@ -13,12 +13,12 @@ export const updateUserRequestSchema = z.object({
 		avatarUrl: z.string().trim().optional(),
 	}),
 	params: z.object({
-		id: z.coerce.number().int().positive(),
+		id: z.uuid(),
 	}),
 });
 
 export const userIdRequestSchema = z.object({
 	params: z.object({
-		id: z.coerce.number().int().positive(),
+		id: z.uuid(),
 	}),
 });

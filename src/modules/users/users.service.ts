@@ -40,7 +40,7 @@ class UserService {
 		return users.map(mapUser);
 	}
 
-	async getUser(id: number): Promise<User> {
+	async getUser(id: string): Promise<User> {
 		const user = await this.userRepository.findById(id);
 		if (!user) {
 			throw new NotFoundError(`User ${id} was not found`);
@@ -48,7 +48,7 @@ class UserService {
 		return mapUser(user);
 	}
 
-	async updateUser(id: number, input: UpdateUserInput): Promise<User> {
+	async updateUser(id: string, input: UpdateUserInput): Promise<User> {
 		const updatedUser = await this.userRepository.update(id, input);
 		if (!updatedUser) {
 			throw new NotFoundError(`User ${id} was not found`);
@@ -56,7 +56,7 @@ class UserService {
 		return mapUser(updatedUser);
 	}
 
-	async deleteUser(id: number): Promise<void> {
+	async deleteUser(id: string): Promise<void> {
 		await withTransaction(async client => {
 			const userIsDeleted = await this.userRepository.delete(id, client);
 			if (!userIsDeleted) {
@@ -67,7 +67,7 @@ class UserService {
 			const message = {
 				topic: KafkaTopics.DeleteComments,
 				payload: {
-					key: String(id),
+					key: id,
 					value: JSON.stringify({ postIds }),
 				},
 			};

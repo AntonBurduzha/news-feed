@@ -12,7 +12,7 @@ export const createPost: RequestHandler = asyncHandler(async (req, res) => {
 
 export const getPosts: RequestHandler = asyncHandler(async (req, res) => {
 	const result = await postService.getPosts({
-		userId: Number(req.query.userId),
+		userId: req.query.userId as string,
 		limit: Number(req.query.limit),
 		cursor: req.query.cursor as string | undefined,
 	});
@@ -20,17 +20,19 @@ export const getPosts: RequestHandler = asyncHandler(async (req, res) => {
 });
 
 export const getPost: RequestHandler = asyncHandler(async (req, res) => {
-	const { id } = req.params;
-	const post = await postService.getPost(Number(id));
+	const { id } = req.params as { id: string };
+	const post = await postService.getPost(id);
 	res.json(post);
 });
 
 export const updatePost: RequestHandler = asyncHandler(async (req, res) => {
-	const post = await postService.updatePost(Number(req.params.id), req.body as UpdatePostInput);
+	const { id } = req.params as { id: string };
+	const post = await postService.updatePost(id, req.body as UpdatePostInput);
 	res.json(post);
 });
 
 export const deletePost: RequestHandler = asyncHandler(async (req, res) => {
-	await postService.deletePost(Number(req.params.id));
+	const { id } = req.params as { id: string };
+	await postService.deletePost(id);
 	res.status(httpStatus.NO_CONTENT).send();
 });

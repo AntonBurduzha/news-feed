@@ -2,7 +2,7 @@ import { db } from '@/db/postgres';
 import type { FollowerPartitionRow } from './follower-partitions.types';
 
 class FollowerPartitionsRepository {
-	async findByFollowerId(followerId: number): Promise<FollowerPartitionRow | null> {
+	async findByFollowerId(followerId: string): Promise<FollowerPartitionRow | null> {
 		const { rows } = await db.query<FollowerPartitionRow>(
 			'SELECT follower_id, partition_index FROM follower_partitions WHERE follower_id = $1;',
 			[followerId],
@@ -10,8 +10,8 @@ class FollowerPartitionsRepository {
 		return rows[0] ?? null;
 	}
 
-	async findFollowerIdsWithoutPartition(): Promise<number[]> {
-		const { rows } = await db.query<{ follower_id: number }>(
+	async findFollowerIdsWithoutPartition(): Promise<string[]> {
+		const { rows } = await db.query<{ follower_id: string }>(
 			`SELECT DISTINCT f.follower_id
 			 FROM follows f
 			 LEFT JOIN follower_partitions fp ON f.follower_id = fp.follower_id
@@ -33,14 +33,14 @@ class FollowerPartitionsRepository {
 		return rows[0]?.idx ?? null;
 	}
 
-	async create(followerId: number, partitionIndex: number): Promise<void> {
+	async create(followerId: string, partitionIndex: number): Promise<void> {
 		await db.query(
 			'INSERT INTO follower_partitions (follower_id, partition_index) VALUES ($1, $2);',
 			[followerId, partitionIndex],
 		);
 	}
 
-	async deleteByFollowerId(followerId: number): Promise<boolean> {
+	async deleteByFollowerId(followerId: string): Promise<boolean> {
 		const { rowCount } = await db.query('DELETE FROM follower_partitions WHERE follower_id = $1;', [
 			followerId,
 		]);

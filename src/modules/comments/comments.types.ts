@@ -1,19 +1,19 @@
 export type CommentAuthor = {
-	userId: number;
+	userId: string;
 	name: string;
 	avatarUrl: string | null;
 };
 
 export type Comment = {
 	id: string;
-	postId: number;
+	postId: string;
 	author: CommentAuthor;
 	content: string;
 	createdAt: string;
 };
 
 export type CreateCommentInput = {
-	postId: number;
+	postId: string;
 	author: CommentAuthor;
 	content: string;
 };
@@ -29,5 +29,5 @@ export type GetCommentsResult = {
 };
 
 export type DeleteCommentsInput = {
-	postIds: number[];
+	postIds: string[];
 };

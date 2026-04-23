@@ -22,7 +22,7 @@ async function run(): Promise<void> {
 		async ({ message, topic, partition }) => {
 			const { key, value } = message;
 			try {
-				const { postIds } = JSON.parse(value!.toString()) as { postIds: number[] };
+				const { postIds } = JSON.parse(value!.toString()) as { postIds: string[] };
 				await commentsService.deleteCommentsByPostIds(postIds);
 				logger.info({ postIds }, 'Comments deleted for post IDs');
 			} catch (error) {

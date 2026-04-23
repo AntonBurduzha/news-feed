@@ -1,5 +1,5 @@
 export type User = {
-	id: number;
+	id: string;
 	name: string;
 	email: string;
 	avatarUrl: string;
@@ -7,11 +7,11 @@ export type User = {
 };
 
 export type UserRow = {
-	id: number;
+	id: string;
 	name: string;
 	email: string;
 	avatar_url: string;
-	created_at: Date;
+	created_at: string;
 };
 
 export type CreateUserInput = {

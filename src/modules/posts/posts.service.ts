@@ -22,8 +22,8 @@ function mapPost(row: PostRow): Post {
 		id: row.id,
 		userId: row.user_id,
 		content: row.content,
-		createdAt: row.created_at.toISOString(),
-		updatedAt: row.updated_at.toISOString(),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 }
 
@@ -89,7 +89,7 @@ class PostService {
 
 	private async buildFollowerMessages(
 		post: Post,
-		followerIds: number[],
+		followerIds: string[],
 	): Promise<CreateMessageOutboxInput[]> {
 		const messagesWithPartitions = await Promise.all(
 			followerIds.map(async followerId => {
@@ -112,7 +112,7 @@ class PostService {
 			.map(({ followerId, partition }) => ({
 				topic: KafkaTopics.CreatePost,
 				payload: {
-					key: String(followerId),
+					key: followerId,
 					value: JSON.stringify(post),
 					partition: partition!,
 				},
@@ -127,11 +127,9 @@ class PostService {
 		let nextCursor = null;
 		if (result.length > 0) {
 			const lastRow = result[result.length - 1];
-			const cursorData = JSON.stringify({
-				createdAt: lastRow.created_at,
-				id: lastRow.id,
-			});
-			nextCursor = Buffer.from(cursorData).toString('base64');
+			const createdAtDate = new Date(lastRow.created_at);
+			const cursorString = createdAtDate.toISOString();
+			nextCursor = Buffer.from(cursorString).toString('base64');
 		}
 		return {
 			posts: result.map(mapPost),
@@ -139,7 +137,7 @@ class PostService {
 		};
 	}
 
-	async getPost(id: number): Promise<Post> {
+	async getPost(id: string): Promise<Post> {
 		const post = await this.postRepository.findById(id);
 		if (!post) {
 			throw new NotFoundError(`Post ${id} was not found`);
@@ -147,7 +145,7 @@ class PostService {
 		return mapPost(post);
 	}
 
-	async updatePost(id: number, input: UpdatePostInput): Promise<Post> {
+	async updatePost(id: string, input: UpdatePostInput): Promise<Post> {
 		const updatedPost = await this.postRepository.update(id, input);
 		if (!updatedPost) {
 			throw new NotFoundError(`Post ${id} was not found`);
@@ -155,7 +153,7 @@ class PostService {
 		return mapPost(updatedPost);
 	}
 
-	async deletePost(id: number): Promise<void> {
+	async deletePost(id: string): Promise<void> {
 		await withTransaction(async client => {
 			const postIsDeleted = await this.postRepository.delete(id, client);
 			if (!postIsDeleted) {
@@ -164,7 +162,7 @@ class PostService {
 			const message = {
 				topic: KafkaTopics.DeleteComments,
 				payload: {
-					key: String(id),
+					key: id,
 					value: JSON.stringify({ postIds: [id] }),
 				},
 			};

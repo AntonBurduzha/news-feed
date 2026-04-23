@@ -6,7 +6,7 @@ export type CreateMessageOutboxInput = {
 };
 
 export type MessageOutboxRow = {
-	id: number;
+	id: string;
 	topic: string;
 	payload: Record<string, unknown>;
 };

@@ -4,7 +4,7 @@ export const shorthands: ColumnDefinitions | undefined = undefined;
 
 export const up = (pgm: MigrationBuilder): void => {
 	pgm.createTable('users', {
-		id: 'id',
+		id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
 		name: { type: 'varchar(255)' },
 		email: { type: 'varchar(255)', notNull: true, unique: true },
 		avatar_url: { type: 'varchar(255)' },
@@ -12,9 +12,9 @@ export const up = (pgm: MigrationBuilder): void => {
 		updated_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 	});
 	pgm.createTable('posts', {
-		id: 'id',
+		id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
 		user_id: {
-			type: 'integer',
+			type: 'uuid',
 			notNull: true,
 			references: 'users(id)',
 			onDelete: 'CASCADE',
@@ -23,18 +23,9 @@ export const up = (pgm: MigrationBuilder): void => {
 		created_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 		updated_at: { type: 'timestamp with time zone', notNull: true, default: pgm.func('now()') },
 	});
-	pgm.createIndex(
-		'posts',
-		[{ name: 'user_id' }, { name: 'created_at', sort: 'DESC' }, { name: 'id', sort: 'DESC' }],
-		{ name: 'idx_posts_user_id_created_at_id' },
-	);
 };
 
 export const down = (pgm: MigrationBuilder): void => {
-	pgm.dropIndex('posts', ['user_id', 'created_at', 'id'], {
-		name: 'idx_posts_user_id_created_at_id',
-		ifExists: true,
-	});
 	pgm.dropTable('posts', { ifExists: true });
 	pgm.dropTable('users', { ifExists: true });
 };

@@ -16,17 +16,19 @@ export const getUsers: RequestHandler = asyncHandler(async (_req, res) => {
 });
 
 export const getUser: RequestHandler = asyncHandler(async (req, res) => {
-	const { id } = req.params;
-	const user = await userService.getUser(Number(id));
+	const { id } = req.params as { id: string };
+	const user = await userService.getUser(id);
 	res.json(user);
 });
 
 export const updateUser: RequestHandler = asyncHandler(async (req, res) => {
-	const user = await userService.updateUser(Number(req.params.id), req.body as UpdateUserInput);
+	const { id } = req.params as { id: string };
+	const user = await userService.updateUser(id, req.body as UpdateUserInput);
 	res.json(user);
 });
 
 export const deleteUser: RequestHandler = asyncHandler(async (req, res) => {
-	await userService.deleteUser(Number(req.params.id));
+	const { id } = req.params as { id: string };
+	await userService.deleteUser(id);
 	res.status(httpStatus.NO_CONTENT).send();
 });

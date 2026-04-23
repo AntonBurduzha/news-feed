@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const createCommentRequestSchema = z.object({
 	body: z.object({
-		postId: z.number().int().positive(),
+		postId: z.uuid(),
 		author: z.object({
-			userId: z.number().int().positive(),
+			userId: z.uuid(),
 			name: z.string().trim().min(1),
 			avatarUrl: z.string().nullable(),
 		}),
@@ -20,6 +20,6 @@ export const deleteCommentRequestSchema = z.object({
 
 export const deleteCommentsRequestSchema = z.object({
 	body: z.object({
-		postIds: z.array(z.number()),
+		postIds: z.array(z.uuid()),
 	}),
 });

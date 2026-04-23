@@ -12,7 +12,7 @@ class MessagesOutboxService {
 		return this.repository.findPendingMessages();
 	}
 
-	async updateMessageStatus(ids: number[], status: MessageOutboxStatus): Promise<void> {
+	async updateMessageStatus(ids: string[], status: MessageOutboxStatus): Promise<void> {
 		return this.repository.updateMessageStatus(ids, status);
 	}
 

@@ -6,7 +6,7 @@ class CommentRepository {
 		return Comments.create(input);
 	}
 
-	async findMany(postId: number, limit: number, cursor: string | null) {
+	async findMany(postId: string, limit: number, cursor: string | null) {
 		const query: Record<string, unknown> = { postId };
 		if (cursor) {
 			query._id = { $lt: cursor };
@@ -19,7 +19,7 @@ class CommentRepository {
 		return result.deletedCount > 0;
 	}
 
-	async deleteMany(postIds: number[]): Promise<boolean> {
+	async deleteMany(postIds: string[]): Promise<boolean> {
 		const result = await Comments.deleteMany({ postId: { $in: postIds } }).exec();
 		return (result.deletedCount ?? 0) > 0;
 	}

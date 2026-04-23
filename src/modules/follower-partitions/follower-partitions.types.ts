@@ -1,4 +1,4 @@
 export type FollowerPartitionRow = {
-	follower_id: number;
+	follower_id: string;
 	partition_index: number;
 };

@@ -2,19 +2,19 @@ import { z } from 'zod';
 
 export const createFollowRequestSchema = z.object({
 	body: z.object({
-		followerId: z.number().int().positive(),
-		followingId: z.number().int().positive(),
+		followerId: z.uuid(),
+		followingId: z.uuid(),
 	}),
 });
 
 export const followersByFollowingIdRequestSchema = z.object({
 	params: z.object({
-		id: z.coerce.number().int().positive(),
+		id: z.uuid(),
 	}),
 });
 
 export const deleteFollowRequestSchema = z.object({
 	params: z.object({
-		id: z.coerce.number().int().positive(),
+		id: z.uuid(),
 	}),
 });

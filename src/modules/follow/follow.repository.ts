@@ -9,13 +9,13 @@ class FollowsRepository {
 		return rows[0];
 	}
 
-	async findFollowersByFollowingId(followingId: number): Promise<number[]> {
+	async findFollowersByFollowingId(followingId: string): Promise<string[]> {
 		const query = 'SELECT array_agg(follower_id) AS ids FROM follows WHERE following_id = $1;';
-		const { rows } = await db.query<{ ids: number[] }>(query, [followingId]);
+		const { rows } = await db.query<{ ids: string[] }>(query, [followingId]);
 		return rows[0].ids ?? [];
 	}
 
-	async findById(id: number): Promise<FollowRow | null> {
+	async findById(id: string): Promise<FollowRow | null> {
 		const { rows } = await db.query<FollowRow>(
 			'SELECT id, follower_id, following_id, created_at FROM follows WHERE id = $1;',
 			[id],
@@ -23,7 +23,7 @@ class FollowsRepository {
 		return rows[0] ?? null;
 	}
 
-	async countByFollowerId(followerId: number): Promise<number> {
+	async countByFollowerId(followerId: string): Promise<number> {
 		const { rows } = await db.query<{ count: number }>(
 			'SELECT count(*) AS count FROM follows WHERE follower_id = $1;',
 			[followerId],
@@ -31,7 +31,7 @@ class FollowsRepository {
 		return rows[0].count;
 	}
 
-	async delete(id: number): Promise<boolean> {
+	async delete(id: string): Promise<boolean> {
 		const query = 'DELETE FROM follows WHERE id = $1;';
 		const { rowCount } = await db.query(query, [id]);
 		return (rowCount ?? 0) > 0;

@@ -28,7 +28,7 @@ class MessagesOutboxRepository {
 		return rows;
 	}
 
-	async updateMessageStatus(ids: number[], status: MessageOutboxStatus): Promise<void> {
+	async updateMessageStatus(ids: string[], status: MessageOutboxStatus): Promise<void> {
 		await db.query('UPDATE messages_outbox SET sent_at = NOW(), status = $1 WHERE id = ANY($2);', [
 			status,
 			ids,

@@ -3,12 +3,12 @@ import mongoose from 'mongoose';
 const commentsSchema = new mongoose.Schema(
 	{
 		postId: {
-			type: Number,
+			type: String,
 			required: true,
 			index: true,
 		},
 		author: {
-			userId: { type: Number, required: true },
+			userId: { type: String, required: true },
 			name: { type: String, required: true },
 			avatarUrl: { type: String },
 		},

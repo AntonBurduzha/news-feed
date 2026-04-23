@@ -11,7 +11,7 @@ import type {
 function mapComment(doc: Record<string, unknown>): Comment {
 	return {
 		id: doc._id as string,
-		postId: doc.postId as number,
+		postId: doc.postId as string,
 		author: doc.author as CommentAuthor,
 		content: doc.content as string,
 		createdAt: doc.createdAt as string,
@@ -28,7 +28,7 @@ class CommentsService {
 	async getComments(postId: string, query: GetCommentsInput): Promise<GetCommentsResult> {
 		const limit = query.limit ?? 10;
 		const cursor = query.cursor ?? null;
-		const comments = await commentsRepository.findMany(Number(postId), limit, cursor);
+		const comments = await commentsRepository.findMany(postId, limit, cursor);
 		let nextCursor = null;
 		if (comments.length > 0) {
 			nextCursor = comments.length > 0 ? comments[comments.length - 1]._id.toString() : null;
@@ -46,7 +46,7 @@ class CommentsService {
 		}
 	}
 
-	async deleteCommentsByPostIds(postIds: number[]): Promise<void> {
+	async deleteCommentsByPostIds(postIds: string[]): Promise<void> {
 		const deleted = await commentsRepository.deleteMany(postIds);
 		if (!deleted) {
 			throw new NotFoundError(`Comments for post IDs ${postIds.join(', ')} were not found`);

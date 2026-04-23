@@ -1,18 +1,18 @@
 export type Follow = {
-	id: number;
-	followerId: number;
-	followingId: number;
+	id: string;
+	followerId: string;
+	followingId: string;
 	createdAt: string;
 };
 
 export type FollowRow = {
-	id: number;
-	follower_id: number;
-	following_id: number;
-	created_at: Date;
+	id: string;
+	follower_id: string;
+	following_id: string;
+	created_at: string;
 };
 
 export type CreateFollowInput = {
-	followerId: number;
-	followingId: number;
+	followerId: string;
+	followingId: string;
 };

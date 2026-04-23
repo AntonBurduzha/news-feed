@@ -15,20 +15,20 @@ class UserRepository {
 		return rows;
 	}
 
-	async findById(id: number): Promise<UserRow | null> {
+	async findById(id: string): Promise<UserRow | null> {
 		const query = 'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = $1;';
 		const { rows } = await db.query<UserRow>(query, [id]);
 		return rows[0] ?? null;
 	}
 
-	async update(id: number, input: UpdateUserInput): Promise<UserRow | null> {
+	async update(id: string, input: UpdateUserInput): Promise<UserRow | null> {
 		const query =
 			'UPDATE users SET name = $1, email = $2, avatar_url = $3 WHERE id = $4 RETURNING id, name, email, avatar_url, created_at;';
 		const { rows } = await db.query<UserRow>(query, [input.name, input.email, input.avatarUrl, id]);
 		return rows[0] ?? null;
 	}
 
-	async delete(id: number, client: PoolClient): Promise<boolean> {
+	async delete(id: string, client: PoolClient): Promise<boolean> {
 		const connection = client ?? db;
 		const query = 'DELETE FROM users WHERE id = $1;';
 		const { rowCount } = await connection.query(query, [id]);

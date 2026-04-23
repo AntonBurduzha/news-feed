@@ -11,7 +11,7 @@ class FollowerPartitionsService {
 		this.repository = followerPartitionsRepository;
 	}
 
-	async getPartitionForFollower(followerId: number): Promise<number | null> {
+	async getPartitionForFollower(followerId: string): Promise<number | null> {
 		const row = await this.repository.findByFollowerId(followerId);
 		return row?.partition_index ?? null;
 	}
@@ -47,7 +47,7 @@ class FollowerPartitionsService {
 		}
 	}
 
-	async getOrAssignPartition(followerId: number): Promise<number> {
+	async getOrAssignPartition(followerId: string): Promise<number> {
 		const existingPartition = await this.getPartitionForFollower(followerId);
 		if (existingPartition !== null) {
 			logger.info(
@@ -87,7 +87,7 @@ class FollowerPartitionsService {
 		}
 	}
 
-	async persistAssignment(followerId: number, partitionIndex: number): Promise<void> {
+	async persistAssignment(followerId: string, partitionIndex: number): Promise<void> {
 		await this.repository.create(followerId, partitionIndex);
 		logger.info(
 			{ followerId, partition: partitionIndex },
@@ -95,7 +95,7 @@ class FollowerPartitionsService {
 		);
 	}
 
-	async releasePartition(followerId: number): Promise<void> {
+	async releasePartition(followerId: string): Promise<void> {
 		const deleted = await this.repository.deleteByFollowerId(followerId);
 		if (deleted) {
 			logger.info({ followerId }, 'Released partition assignment for follower');
