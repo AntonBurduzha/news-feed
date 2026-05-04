@@ -3,14 +3,15 @@ import { logger } from '@/lib/logger';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 import { followsRepository } from './follow.repository';
 import type { CreateFollowInput, Follow, FollowRow } from './follow.types';
-import { userService } from '../users/users.service';
+import { userService } from '@/modules/users/users.service';
+import type { UsersPort } from './follow.ports';
 
 function mapFollow(row: FollowRow): Follow {
 	return {
 		id: row.id,
 		followerId: row.follower_id,
 		followingId: row.following_id,
-		createdAt: row.created_at.toISOString(),
+		createdAt: row.created_at,
 	};
 }
 
@@ -18,17 +19,19 @@ class FollowService {
 	private readonly followsRepository;
 	private readonly followerPartitionsService;
 
-	constructor() {
+	private readonly usersPort: UsersPort;
+	constructor(usersPort: UsersPort) {
+		this.usersPort = usersPort;
 		this.followsRepository = followsRepository;
 		this.followerPartitionsService = followerPartitionsService;
 	}
 
 	async createFollow(input: CreateFollowInput): Promise<Follow> {
-		const follower = await userService.getUser(input.followerId);
+		const follower = await this.usersPort.getUser(input.followerId);
 		if (!follower) {
 			throw new NotFoundError(`Follower ${input.followerId} was not found`);
 		}
-		const following = await userService.getUser(input.followingId);
+		const following = await this.usersPort.getUser(input.followingId);
 		if (!following) {
 			throw new NotFoundError(`Following ${input.followingId} was not found`);
 		}
@@ -88,4 +91,7 @@ class FollowService {
 	}
 }
 
-export const followService = new FollowService();
+const usersPort: UsersPort = {
+	getUser: id => userService.getUser(id),
+};
+export const followService = new FollowService(usersPort);

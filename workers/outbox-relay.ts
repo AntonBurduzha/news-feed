@@ -17,12 +17,15 @@ async function run(): Promise<void> {
 				if (pendingMessages.length === 0) {
 					return;
 				}
-				logger.info({ pendingMessages }, 'Found pending messages in outbox relay worker');
+				logger.info(`Found ${pendingMessages.length} pending messages in outbox relay worker`);
 				for (const message of pendingMessages) {
 					await kafkaProducer.sendMessage(message.topic, [
 						{
 							key: message.payload.key as string,
 							value: message.payload.value as string,
+							headers: {
+								'x-correlation-id': message.correlationId,
+							},
 							...(message.payload.partition
 								? { partition: message.payload.partition as number }
 								: {}),

@@ -3,8 +3,8 @@ import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { env } from '@/config/env';
+import { requestContext } from '@/middleware/context';
 
-/** Shaped like pino-std-serializers output after wrapRequestSerializer (no raw IncomingMessage). */
 type SerializedHttpReq = {
 	id?: string;
 	method?: string;
@@ -15,6 +15,7 @@ type SerializedHttpReq = {
 
 type SerializedHttpRes = {
 	statusCode?: number | null;
+	correlationId?: string;
 };
 
 function slimAccessReqSerializer(req: SerializedHttpReq) {
@@ -22,28 +23,35 @@ function slimAccessReqSerializer(req: SerializedHttpReq) {
 		id: req.id,
 		method: req.method,
 		url: req.url,
-		...(req.remoteAddress != null && req.remoteAddress !== ''
-			? { remoteAddress: req.remoteAddress }
-			: {}),
+		// TODO: uncomment when finish microservices architecture
+		// ...(req.remoteAddress != null && req.remoteAddress !== ''
+		// 	? { remoteAddress: req.remoteAddress }
+		// 	: {}),
 	};
 }
 
 function slimAccessResSerializer(res: SerializedHttpRes) {
-	return {
-		statusCode: res.statusCode,
-	};
+	return res.statusCode;
 }
 
 const loggerOptions = env.isProduction
 	? {
 			level: env.LOG_LEVEL,
+			base: {
+				service: env.SERVICE_NAME,
+			},
+			mixin: () => ({ correlationId: requestContext.getStore()?.correlationId }),
 		}
 	: {
 			level: env.LOG_LEVEL,
+			base: {
+				service: env.SERVICE_NAME,
+			},
+			mixin: () => ({ correlationId: requestContext.getStore()?.correlationId }),
 			transport: {
 				target: 'pino-pretty',
 				options: {
-					//singleLine: true,
+					singleLine: true,
 					colorize: true,
 					translateTime: 'SYS:standard',
 					ignore: 'pid,hostname',

@@ -8,6 +8,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 		id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
 		topic: { type: 'varchar(255)', notNull: true },
 		payload: { type: 'jsonb', notNull: true },
+		correlation_id: { type: 'varchar(255)', notNull: true },
 		status: { type: 'varchar(20)', notNull: true, default: MessageOutboxStatus.Pending },
 		sent_at: { type: 'timestamp with time zone' },
 		retry_count: { type: 'integer', notNull: true, default: 0 },

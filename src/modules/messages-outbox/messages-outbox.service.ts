@@ -1,5 +1,14 @@
 import { messagesOutboxRepository } from './messages-outbox.repository';
-import { MessageOutboxRow, MessageOutboxStatus } from './messages-outbox.types';
+import { MessageOutbox, MessageOutboxRow, MessageOutboxStatus } from './messages-outbox.types';
+
+function mapMessageOutbox(row: MessageOutboxRow): MessageOutbox {
+	return {
+		id: row.id,
+		topic: row.topic,
+		payload: row.payload,
+		correlationId: row.correlation_id,
+	};
+}
 
 class MessagesOutboxService {
 	private readonly repository;
@@ -8,8 +17,9 @@ class MessagesOutboxService {
 		this.repository = messagesOutboxRepository;
 	}
 
-	async findPendingMessages(): Promise<MessageOutboxRow[]> {
-		return this.repository.findPendingMessages();
+	async findPendingMessages(): Promise<MessageOutbox[]> {
+		const rows = await this.repository.findPendingMessages();
+		return rows.map(mapMessageOutbox);
 	}
 
 	async updateMessageStatus(ids: string[], status: MessageOutboxStatus): Promise<void> {

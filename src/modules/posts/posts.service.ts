@@ -2,6 +2,7 @@ import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
 import { AppError, NotFoundError } from '@/lib/errors';
 import { KafkaTopics } from '@/kafka/topics';
+import { requestContext } from '@/middleware/context';
 import { followsRepository } from '@/modules/follow/follow.repository';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 import { postsRepository } from '@/modules/posts/posts.repository';
@@ -16,6 +17,7 @@ import type {
 	GetPostsQueryParams,
 	GetPostsResult,
 } from './posts.types';
+import type { UsersPort } from './posts.ports';
 
 function mapPost(row: PostRow): Post {
 	return {
@@ -32,7 +34,9 @@ class PostService {
 	private readonly followerPartitionsService;
 	private readonly postRepository;
 	private readonly messagesOutboxRepository;
-	constructor() {
+	private readonly usersPort: UsersPort;
+	constructor(usersPort: UsersPort) {
+		this.usersPort = usersPort;
 		this.postRepository = postsRepository;
 		this.followsRepository = followsRepository;
 		this.followerPartitionsService = followerPartitionsService;
@@ -40,11 +44,11 @@ class PostService {
 	}
 
 	async createPost(input: CreatePostInput): Promise<Post> {
+		const user = await this.usersPort.getUser(input.userId);
+		if (!user) {
+			throw new NotFoundError(`User ${input.userId} was not found`);
+		}
 		const post = await withTransaction(async client => {
-			const user = await userService.getUser(input.userId);
-			if (!user) {
-				throw new NotFoundError(`User ${input.userId} was not found`);
-			}
 			const newPost = await this.postRepository.create(input, client);
 			const mappedPost = mapPost(newPost);
 			const followerIds = await this.followsRepository.findFollowersByFollowingId(
@@ -57,8 +61,12 @@ class PostService {
 				);
 				return mappedPost;
 			}
-
-			const followersMessages = await this.buildFollowerMessages(mappedPost, followerIds);
+			const correlationId = requestContext.getStore()?.correlationId ?? '';
+			const followersMessages = await this.buildFollowerMessages(
+				mappedPost,
+				followerIds,
+				correlationId,
+			);
 			if (followersMessages.length === 0) {
 				logger.warn(
 					{ postId: mappedPost.id, userId: mappedPost.userId },
@@ -90,6 +98,7 @@ class PostService {
 	private async buildFollowerMessages(
 		post: Post,
 		followerIds: string[],
+		correlationId: string,
 	): Promise<CreateMessageOutboxInput[]> {
 		const messagesWithPartitions = await Promise.all(
 			followerIds.map(async followerId => {
@@ -116,6 +125,7 @@ class PostService {
 					value: JSON.stringify(post),
 					partition: partition!,
 				},
+				correlationId,
 			}));
 	}
 
@@ -159,12 +169,14 @@ class PostService {
 			if (!postIsDeleted) {
 				throw new NotFoundError(`Post ${id} was not found`);
 			}
+			const correlationId = requestContext.getStore()?.correlationId ?? '';
 			const message = {
 				topic: KafkaTopics.DeleteComments,
 				payload: {
 					key: id,
 					value: JSON.stringify({ postIds: [id] }),
 				},
+				correlationId,
 			};
 			await this.messagesOutboxRepository.create(message, client);
 			logger.info({ postIds: [id] }, 'Post deleted message fanned out via Kafka');
@@ -172,4 +184,7 @@ class PostService {
 	}
 }
 
-export const postService = new PostService();
+const usersPort: UsersPort = {
+	getUser: id => userService.getUser(id),
+};
+export const postService = new PostService(usersPort);

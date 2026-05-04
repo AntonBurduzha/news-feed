@@ -44,10 +44,11 @@ class KafkaConsumer {
 		await this.consumer.run({
 			eachMessage: async (payload: EachMessagePayload) => {
 				const { topic, partition, message } = payload;
-
+				const correlationId = message.headers?.['x-correlation-id']?.toString();
 				logger.info(
 					{
 						topic,
+						...(correlationId ? { correlationId } : {}),
 						partition,
 						offset: message.offset,
 						timestamp: formatKafkaTimestamp(message.timestamp),

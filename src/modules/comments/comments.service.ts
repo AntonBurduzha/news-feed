@@ -1,4 +1,6 @@
 import { NotFoundError } from '@/lib/errors';
+import { postService } from '@/modules/posts/posts.service';
+import { userService } from '@/modules/users/users.service';
 import { commentsRepository } from './comments.repository';
 import type {
 	Comment,
@@ -7,6 +9,7 @@ import type {
 	GetCommentsInput,
 	GetCommentsResult,
 } from './comments.types';
+import type { PostsPort, UsersPort } from './comments.ports';
 
 function mapComment(doc: Record<string, unknown>): Comment {
 	return {
@@ -19,8 +22,21 @@ function mapComment(doc: Record<string, unknown>): Comment {
 }
 
 class CommentsService {
+	private readonly postsPort: PostsPort;
+	private readonly usersPort: UsersPort;
+	constructor(postsPort: PostsPort, usersPort: UsersPort) {
+		this.postsPort = postsPort;
+		this.usersPort = usersPort;
+	}
 	async createComment(input: CreateCommentInput) {
-		// TODO: check post exists and user
+		const post = await this.postsPort.getPost(input.postId);
+		if (!post) {
+			throw new NotFoundError(`Post ${input.postId} was not found`);
+		}
+		const user = await this.usersPort.getUser(input.author.userId);
+		if (!user) {
+			throw new NotFoundError(`User ${input.author.userId} was not found`);
+		}
 		const comment = await commentsRepository.create(input);
 		return mapComment(comment.toObject());
 	}
@@ -54,4 +70,11 @@ class CommentsService {
 	}
 }
 
-export const commentsService = new CommentsService();
+const postsPort: PostsPort = {
+	getPost: id => postService.getPost(id),
+};
+const usersPort: UsersPort = {
+	getUser: id => userService.getUser(id),
+};
+
+export const commentsService = new CommentsService(postsPort, usersPort);

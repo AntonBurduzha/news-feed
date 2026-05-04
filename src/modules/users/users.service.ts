@@ -2,10 +2,12 @@ import { withTransaction } from '@/db/postgres';
 import { NotFoundError } from '@/lib/errors';
 import { KafkaTopics } from '@/kafka/topics';
 import { logger } from '@/lib/logger';
+import { requestContext } from '@/middleware/context';
 import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
 import { postService } from '@/modules/posts/posts.service';
 import { usersRepository } from './users.repository';
 import type { CreateUserInput, UpdateUserInput, User, UserRow } from './users.types';
+import type { PostsPort } from './users.ports';
 
 function mapUser(row: UserRow): User {
 	return {
@@ -13,18 +15,18 @@ function mapUser(row: UserRow): User {
 		name: row.name,
 		email: row.email,
 		avatarUrl: row.avatar_url,
-		createdAt: row.created_at.toISOString(),
+		createdAt: row.created_at,
 	};
 }
 
 class UserService {
 	private readonly userRepository;
 	private readonly messagesOutboxRepository;
-	private readonly postService;
-	constructor() {
+	private readonly postsPort: PostsPort;
+	constructor(postsPort: PostsPort) {
 		this.userRepository = usersRepository;
 		this.messagesOutboxRepository = messagesOutboxRepository;
-		this.postService = postService;
+		this.postsPort = postsPort;
 	}
 
 	async createUser(input: CreateUserInput): Promise<User> {
@@ -57,24 +59,31 @@ class UserService {
 	}
 
 	async deleteUser(id: string): Promise<void> {
+		const posts = await this.postsPort.getPosts({ userId: id });
+		const postIds = posts.posts.map(post => post.id);
+		const correlationId = requestContext.getStore()?.correlationId ?? '';
+		const message = {
+			topic: KafkaTopics.DeleteComments,
+			payload: {
+				key: id,
+				value: JSON.stringify({ postIds }),
+			},
+			correlationId,
+		};
 		await withTransaction(async client => {
 			const userIsDeleted = await this.userRepository.delete(id, client);
 			if (!userIsDeleted) {
 				throw new NotFoundError(`User ${id} was not found`);
 			}
-			const posts = await this.postService.getPosts({ userId: id });
-			const postIds = posts.posts.map(post => post.id);
-			const message = {
-				topic: KafkaTopics.DeleteComments,
-				payload: {
-					key: id,
-					value: JSON.stringify({ postIds }),
-				},
-			};
-			await this.messagesOutboxRepository.create(message, client);
-			logger.info({ postIds }, 'Posts deleted message fanned out via Kafka');
+			if (postIds.length > 0) {
+				await this.messagesOutboxRepository.create(message, client);
+				logger.info({ postIds }, 'Posts deleted message fanned out via Kafka');
+			}
 		});
 	}
 }
 
-export const userService = new UserService();
+const postsPort: PostsPort = {
+	getPosts: ({ userId }) => postService.getPosts({ userId }),
+};
+export const userService = new UserService(postsPort);

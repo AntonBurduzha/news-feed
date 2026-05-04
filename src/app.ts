@@ -5,10 +5,12 @@ import helmet from 'helmet';
 import routes from '@/routes';
 import { httpLogger } from '@/lib/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/error-handler';
+import { contextMiddleware } from '@/middleware/context';
 
 const app = express();
 
 app.disable('x-powered-by');
+app.use(contextMiddleware);
 app.use(httpLogger);
 app.use(helmet());
 app.use(

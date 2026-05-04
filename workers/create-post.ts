@@ -6,7 +6,6 @@ import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 
-// Usage: tsx consumer.ts -- --followerId=1
 function parseArgs(): { followerId: string } {
 	const args = process.argv.slice(2);
 
@@ -19,7 +18,9 @@ function parseArgs(): { followerId: string } {
 	}
 
 	if (followerId === undefined) {
-		throw new Error('Missing --followerId argument. Usage: tsx consumer.ts --followerId=1');
+		throw new Error(
+			'Missing --followerId argument. Usage: tsx workers/create-post.ts -- --followerId=1',
+		);
 	}
 
 	return { followerId };

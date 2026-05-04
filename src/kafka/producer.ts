@@ -6,6 +6,7 @@ type KafkaMessage = {
 	key: string;
 	value: string;
 	partition?: number;
+	headers?: Record<string, string>;
 };
 
 type KafkaMessageWithDLQ = KafkaMessage & {
@@ -45,6 +46,7 @@ class KafkaProducer {
 		logger.info(
 			{
 				topic,
+				messages,
 				messageCount: messages.length,
 				partitions: messages.map(m => m.partition).filter(p => p !== undefined),
 			},

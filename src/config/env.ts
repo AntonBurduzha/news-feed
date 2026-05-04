@@ -18,6 +18,7 @@ const envSchema = z.object({
 	HOST_IP: z.string().min(1).optional(),
 	KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: z.string().min(5),
 	KAFKA_BROKERS: z.string().optional(),
+	SERVICE_NAME: z.string().min(1),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
