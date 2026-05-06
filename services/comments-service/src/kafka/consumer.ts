@@ -1,0 +1,61 @@
+import { Kafka, logLevel, type Consumer, type EachMessagePayload } from 'kafkajs';
+import { logger } from '@/lib/logger';
+import { formatKafkaTimestamp } from '@/utils/date';
+
+class KafkaConsumer {
+	private readonly kafka: Kafka;
+	private readonly consumer: Consumer;
+	private readonly groupId: string;
+
+	constructor(clientId: string, brokers: string[], groupId: string) {
+		this.kafka = new Kafka({
+			clientId,
+			brokers,
+			logLevel: logLevel.INFO,
+		});
+		this.groupId = groupId;
+		this.consumer = this.kafka.consumer({ groupId });
+	}
+
+	async connect(): Promise<void> {
+		await this.consumer.connect();
+		logger.info({ groupId: this.groupId }, 'Kafka consumer connected');
+	}
+
+	async disconnect(): Promise<void> {
+		await this.consumer.disconnect();
+		logger.info({ groupId: this.groupId }, 'Kafka consumer disconnected');
+	}
+
+	async subscribeAndListen(
+		topics: string[],
+		topicCallback: (payload: EachMessagePayload) => Promise<void>,
+	): Promise<void> {
+		await this.consumer.subscribe({ topics, fromBeginning: false });
+
+		logger.info({ topics, groupId: this.groupId }, 'Consumer subscribed to topics');
+
+		await this.consumer.run({
+			eachMessage: async (payload: EachMessagePayload) => {
+				const { topic, partition, message } = payload;
+				const correlationId = message.headers?.['x-correlation-id']?.toString();
+				logger.info(
+					{
+						topic,
+						...(correlationId ? { correlationId } : {}),
+						partition,
+						offset: message.offset,
+						timestamp: formatKafkaTimestamp(message.timestamp),
+						key: message.key?.toString(),
+						value: message.value?.toString(),
+						groupId: this.groupId,
+					},
+					'Consumed Kafka message',
+				);
+				await topicCallback(payload);
+			},
+		});
+	}
+}
+
+export default KafkaConsumer;

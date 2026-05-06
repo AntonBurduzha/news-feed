@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
 	{
-		ignores: ['dist/**', 'node_modules/**', '.npm-cache/**', 'eslint.config.js'],
+		ignores: ['**/dist/**', '**/node_modules/**', '.npm-cache/**', 'eslint.config.js'],
 	},
 	js.configs.recommended,
 	...tseslint.configs.recommendedTypeChecked,
@@ -13,7 +13,12 @@ export default tseslint.config(
 		languageOptions: {
 			globals: globals.node,
 			parserOptions: {
-				project: './tsconfig.json',
+				project: [
+					'./tsconfig.json',
+					'./services/monolith/tsconfig.json',
+					'./services/comments-service/tsconfig.json',
+					'./services/shared/contracts/tsconfig.json',
+				],
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},

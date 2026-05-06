@@ -1,0 +1,26 @@
+{
+	"name": "@news-feed/contracts",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+		"lint": "eslint .",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"tsc-alias": "^1.8.16",
+		"typescript": "^6.0.3"
+	}
+}

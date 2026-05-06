@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"ignoreDeprecations": "6.0",
+		"noEmit": true,
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"resolveJsonModule": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"sourceMap": true,
+		"types": ["node"],
+		"declaration": true
+	}
+}
