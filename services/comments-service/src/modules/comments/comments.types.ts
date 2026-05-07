@@ -1,16 +1,4 @@
-export type CommentAuthor = {
-	userId: string;
-	name: string;
-	avatarUrl: string | null;
-};
-
-export type Comment = {
-	id: string;
-	postId: string;
-	author: CommentAuthor;
-	content: string;
-	createdAt: string;
-};
+import type { CommentAuthor, Comment } from '@news-feed/contracts';
 
 export type CreateCommentInput = {
 	postId: string;
@@ -27,3 +15,5 @@ export type GetCommentsResult = {
 	comments: Comment[];
 	nextCursor: string | null;
 };
+
+export type { CommentAuthor, Comment };

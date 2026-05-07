@@ -12,7 +12,6 @@ const envSchema = z.object({
 	POSTGRES_DB_USER: z.string().min(1),
 	POSTGRES_DB_PASSWORD: z.string().min(1),
 	POSTGRES_DB_NAME: z.string().min(1),
-	HOST_IP: z.string().min(1).optional(),
 	KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: z.string().min(5),
 	KAFKA_BROKERS: z.string().optional(),
 });
@@ -29,8 +28,6 @@ const kafkaBrokers = parsedEnv.data.KAFKA_BROKERS?.split(',')
 
 export const env = {
 	...parsedEnv.data,
-	KAFKA_BROKERS: kafkaBrokers?.length
-		? kafkaBrokers
-		: [`${parsedEnv.data.HOST_IP ?? '127.0.0.1'}:9092`],
+	KAFKA_BROKERS: kafkaBrokers?.length ? kafkaBrokers : ['127.0.0.1:9092'],
 	isProduction: parsedEnv.data.NODE_ENV === 'production',
 } as const;

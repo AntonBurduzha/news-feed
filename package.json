@@ -1,5 +1,6 @@
 {
 	"name": "news-feed",
+	"type": "module",
 	"private": true,
 	"workspaces": [
 		"services/monolith",
