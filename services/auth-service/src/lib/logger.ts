@@ -23,10 +23,9 @@ function slimAccessReqSerializer(req: SerializedHttpReq) {
 		id: req.id,
 		method: req.method,
 		url: req.url,
-		// TODO: uncomment when finish microservices architecture
-		// ...(req.remoteAddress != null && req.remoteAddress !== ''
-		// 	? { remoteAddress: req.remoteAddress }
-		// 	: {}),
+		...(req.remoteAddress != null && req.remoteAddress !== ''
+			? { remoteAddress: req.remoteAddress }
+			: {}),
 	};
 }
 
@@ -40,20 +39,14 @@ const loggerOptions = env.isProduction
 			base: {
 				service: env.SERVICE_NAME,
 			},
-			mixin: () => ({
-				correlationId: requestContext.getStore()?.correlationId,
-				userId: requestContext.getStore()?.userId ?? 'anon',
-			}),
+			mixin: () => ({ correlationId: requestContext.getStore()?.correlationId }),
 		}
 	: {
 			level: env.LOG_LEVEL,
 			base: {
 				service: env.SERVICE_NAME,
 			},
-			mixin: () => ({
-				correlationId: requestContext.getStore()?.correlationId,
-				userId: requestContext.getStore()?.userId ?? 'anon',
-			}),
+			mixin: () => ({ correlationId: requestContext.getStore()?.correlationId }),
 			transport: {
 				target: 'pino-pretty',
 				options: {

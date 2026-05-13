@@ -16,6 +16,7 @@ export async function initPostgresDB() {
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			);
+			ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NOT NULL;
 
 			-- posts table
 			DROP TABLE IF EXISTS posts;
@@ -67,6 +68,20 @@ export async function initPostgresDB() {
 				retry_count INT NOT NULL DEFAULT 5,
 				max_retries INT NOT NULL DEFAULT 0,
 				created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			);
+
+			-- refresh_tokens table
+			DROP TABLE IF EXISTS refresh_tokens;
+			CREATE TABLE refresh_tokens (
+				id 					UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id 		UUID NOT NULL,
+				token_hash  VARCHAR(255) NOT NULL,
+				expires_at  TIMESTAMPTZ NOT NULL,
+				revoked_at  TIMESTAMPTZ,
+				created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				CONSTRAINT fk_refresh_tokens_user_id 
+					FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 			);
 		`;
 		await db.query(query);

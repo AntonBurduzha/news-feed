@@ -1,5 +1,5 @@
 import type { Server } from 'node:http';
-import app from '@/app';
+import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { connectMongo, disconnectMongo } from '@/db/mongo';
 import KafkaConsumer from '@/kafka/consumer';
@@ -98,6 +98,7 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 	});
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
+		['Auth client', () => authClient.disconnect()],
 		['Kafka producer', () => kafkaProducer.disconnect()],
 		['Kafka consumer', () => consumer.disconnect()],
 		['MongoDB connection', () => disconnectMongo()],

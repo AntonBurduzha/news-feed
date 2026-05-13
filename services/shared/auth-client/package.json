@@ -1,0 +1,28 @@
+{
+	"name": "@news-feed/auth-client",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+		"lint": "eslint .",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"jose": "^6.2.3",
+		"redis": "^5.12.1"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.6",
+		"tsc-alias": "^1.8.16",
+		"typescript": "^6.0.3"
+	}
+}

@@ -11,6 +11,10 @@ const envSchema = z.object({
 	MONGO_DB_USER: z.string().min(1),
 	MONGO_DB_PASSWORD: z.string().min(1),
 	MONGO_DB_NAME: z.string().min(1),
+	REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+	AUTH_JWKS_URL: z.string().min(1).default('http://localhost:3002/.well-known/jwks.json'),
+	AUTH_ISSUER: z.string().min(1).default('auth-svc'),
+	AUTH_AUDIENCE: z.string().min(1).default('news-feed'),
 	KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: z.string().min(5),
 	KAFKA_BROKERS: z.string().optional(),
 });

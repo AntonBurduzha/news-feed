@@ -4,7 +4,6 @@ import type { RequestHandler } from 'express';
 
 export type RequestContext = {
 	correlationId: string;
-	userId?: string;
 };
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();

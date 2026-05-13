@@ -5,17 +5,20 @@
 	"workspaces": [
 		"services/monolith",
 		"services/comments-service",
+		"services/auth-service",
 		"services/shared/*"
 	],
 	"scripts": {
 		"dev:monolith": "npm --workspace services/monolith run dev",
 		"dev:comments": "npm --workspace services/comments-service run dev",
+		"dev:auth": "npm --workspace services/auth-service run dev",
 		"build": "npm run build --workspaces",
 		"typecheck": "npm run typecheck --workspaces",
 		"lint": "npm run lint --workspaces",
 		"format": "prettier --write \"services/**/*.ts\" \"*.ts\" \"eslint.config.js\"",
 		"start:monolith": "npm --workspace services/monolith run start",
 		"start:comments": "npm --workspace services/comments-service run start",
+		"start:auth": "npm --workspace services/auth-service run start",
 		"migrate:postgres": "npm --workspace services/monolith run migrate:postgres",
 		"migrate:postgres:down": "npm --workspace services/monolith run migrate:postgres:down",
 		"migrate:postgres:create": "npm --workspace services/monolith run migrate:postgres:create",

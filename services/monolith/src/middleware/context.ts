@@ -4,7 +4,7 @@ import type { RequestHandler } from 'express';
 
 export type RequestContext = {
 	correlationId: string;
-	// TODO: extend with userId once auth-service lands
+	userId?: string;
 };
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();

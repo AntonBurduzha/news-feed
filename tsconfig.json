@@ -3,7 +3,8 @@
 	"references": [
 		{ "path": "./services/monolith" },
 		{ "path": "./services/comments-service" },
-		{ "path": "./services/shared/contracts" }
+		{ "path": "./services/auth-service" },
+		{ "path": "./services/shared/contracts" },
+		{ "path": "./services/shared/auth-client" }
 	]
 }
-

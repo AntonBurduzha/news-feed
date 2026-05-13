@@ -43,24 +43,59 @@ services:
     volumes:
       - mongodb_data:/data/db
 
-  comments-service:
-    build:
-      context: .
-      dockerfile: services/comments-service/Dockerfile
-    env_file: .env
-    environment:
-      PORT: 3001
-      NODE_ENV: production
-      SERVICE_NAME: comments-svc
-      KAFKA_BROKERS: kafka:9092
-      KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: comments-svc
-      MONGO_DB_HOST: mongodb
+  redis:
+    image: redis:7-alpine
     ports:
-      - '3001:3001'
-    depends_on:
-      - kafka
-      - mongodb
+      - '6379:6379'
+    # love this feature
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  # comments-service:
+  #   build:
+  #     context: .
+  #     dockerfile: services/comments-service/Dockerfile
+  #   env_file: .env
+  #   environment:
+  #     PORT: 3001
+  #     NODE_ENV: production
+  #     SERVICE_NAME: comments-svc
+  #     KAFKA_BROKERS: kafka:9092
+  #     KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: comments-svc
+  #     MONGO_DB_HOST: mongodb
+  #     REDIS_URL: redis://redis:6379
+  # AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
+  # AUTH_ISSUER: auth-svc
+  # AUTH_AUDIENCE: news-feed
+  #   ports:
+  #     - '3001:3001'
+  #   depends_on:
+  #     - kafka
+  #     - mongodb
+
+  # auth-service:
+  #   build:
+  #     context: .
+  #     dockerfile: services/auth-service/Dockerfile
+  #   env_file: .env
+  #   environment:
+  #     PORT: 3002
+  #     NODE_ENV: production
+  #     SERVICE_NAME: auth-svc
+  #     POSTGRES_DB_HOST: postgres
+  #     POSTGRES_DB_PORT: 5432
+  #     REDIS_URL: redis://redis:6379
+  #     JWT_ISSUER: auth-svc
+  #     JWT_AUDIENCE: news-feed
+  #   ports:
+  #     - '3002:3002'
 
 volumes:
   postgres_data:
   mongodb_data:
+  redis_data:
