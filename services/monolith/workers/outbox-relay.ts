@@ -17,7 +17,11 @@ async function run(): Promise<void> {
 				if (pendingMessages.length === 0) {
 					return;
 				}
-				logger.info(`Found ${pendingMessages.length} pending messages in outbox relay worker`);
+				logger.info(
+					{ pendingCount: pendingMessages.length },
+					'Found pending messages in outbox relay worker',
+				);
+				let publishedCount = 0;
 				for (const message of pendingMessages) {
 					await kafkaProducer.sendMessage(message.topic, [
 						{
@@ -31,7 +35,9 @@ async function run(): Promise<void> {
 								: {}),
 						},
 					]);
+					publishedCount += 1;
 				}
+				logger.info({ publishedCount }, 'Published messages in outbox relay worker');
 				await messagesOutboxService.updateMessageStatus(
 					pendingMessages.map(m => m.id),
 					MessageOutboxStatus.Sent,

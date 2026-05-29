@@ -19,9 +19,9 @@ class CommentRepository {
 		return result.deletedCount > 0;
 	}
 
-	async deleteByPostId(postId: string): Promise<boolean> {
+	async deleteByPostId(postId: string): Promise<number> {
 		const result = await Comments.deleteMany({ postId }).exec();
-		return (result.deletedCount ?? 0) > 0;
+		return result.deletedCount ?? 0;
 	}
 }
 

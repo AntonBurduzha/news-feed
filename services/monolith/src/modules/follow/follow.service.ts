@@ -47,9 +47,9 @@ class FollowService {
 				{
 					followerId: input.followerId,
 					followingId: input.followingId,
-					partition: partitionIndex,
+					assignedPartition: partitionIndex,
 				},
-				'Kafka partition assigned for follower during follow creation',
+				'Follow created',
 			);
 		} catch {
 			logger.error(

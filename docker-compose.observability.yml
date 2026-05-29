@@ -1,0 +1,37 @@
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - '3100:3100'
+    volumes:
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - '3003:3000'
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./infra/grafana/provisioning/datasources/loki.yaml:/etc/grafana/provisioning/datasources/loki.yaml
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - loki
+
+  alloy:
+    image: grafana/alloy:v1.0.0
+    ports:
+      - '12345:12345'
+    volumes:
+      - ./infra/alloy/config.logs-only.alloy:/etc/alloy/config.alloy
+      - ./logs:/var/log/news-feed:ro # host log files mounted read-only into Alloy container
+    command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
+    depends_on:
+      - loki
+
+volumes:
+  loki_data:
+  grafana_data:

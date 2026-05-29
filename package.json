@@ -19,6 +19,7 @@
 		"start:monolith": "npm --workspace services/monolith run start",
 		"start:comments": "npm --workspace services/comments-service run start",
 		"start:auth": "npm --workspace services/auth-service run start",
+		"start:outbox-relay": "npm --workspace services/monolith run worker:outbox",
 		"migrate:postgres": "npm --workspace services/monolith run migrate:postgres",
 		"migrate:postgres:down": "npm --workspace services/monolith run migrate:postgres:down",
 		"migrate:postgres:create": "npm --workspace services/monolith run migrate:postgres:create",

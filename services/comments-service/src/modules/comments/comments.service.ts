@@ -54,11 +54,12 @@ class CommentsService {
 		}
 	}
 
-	async deleteCommentsByPostId(postId: string): Promise<void> {
-		const deleted = await commentsRepository.deleteByPostId(postId);
-		if (!deleted) {
+	async deleteCommentsByPostId(postId: string): Promise<number> {
+		const deletedCount = await commentsRepository.deleteByPostId(postId);
+		if (deletedCount === 0) {
 			throw new NotFoundError(`Comments for post id ${postId} were not found`);
 		}
+		return deletedCount;
 	}
 }
 

@@ -48,7 +48,12 @@ class PostService {
 		if (!user) {
 			throw new NotFoundError(`User ${input.userId} was not found`);
 		}
-		const post = await withTransaction(async client => {
+		const result: {
+			mappedPost: Post;
+			outboxMessageCount: number;
+			followerCount: number;
+			fanOutMessageCount: number;
+		} = await withTransaction(async client => {
 			const newPost = await this.postRepository.create(input, client);
 			const mappedPost = mapPost(newPost);
 			const correlationId = requestContext.getStore()?.correlationId ?? '';
@@ -65,7 +70,9 @@ class PostService {
 				},
 				correlationId,
 			};
+			let outboxMessageCount = 0;
 			await this.messagesOutboxRepository.create(postCreatedMsg, client);
+			outboxMessageCount += 1;
 			logger.info({ postId: mappedPost.id }, 'Post created message fanned out via Kafka');
 			const followerIds = await this.followsRepository.findFollowersByFollowingId(
 				mappedPost.userId,
@@ -75,7 +82,7 @@ class PostService {
 					{ postId: mappedPost.id, userId: mappedPost.userId },
 					'Post author has no followers — skipping Kafka fan-out',
 				);
-				return mappedPost;
+				return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
 			}
 			const followersMessages = await this.buildFollowerMessages(
 				mappedPost,
@@ -87,27 +94,34 @@ class PostService {
 					{ postId: mappedPost.id, userId: mappedPost.userId },
 					'No followers have valid partition assignments — skipping Kafka fan-out',
 				);
-				return mappedPost;
+				return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
 			}
 
 			for (const msg of followersMessages) {
 				await this.messagesOutboxRepository.create(msg, client);
+				outboxMessageCount += 1;
 			}
-			logger.info(
-				{
-					postId: mappedPost.id,
-					userId: mappedPost.userId,
-					followerCount: followerIds.length,
-					messagesSent: followersMessages.length,
-				},
-				'Post fanned out to follower partitions via Kafka',
-			);
-			return mappedPost;
+			return {
+				mappedPost,
+				outboxMessageCount,
+				followerCount: followerIds.length,
+				fanOutMessageCount: followersMessages.length,
+			};
 		});
-		if (!post) {
+		if (!result) {
 			throw new AppError('Database did not return the created post');
 		}
-		return post;
+		logger.info(
+			{
+				postId: result.mappedPost.id,
+				userId: input.userId,
+				followerCount: result.followerCount,
+				outboxMessageCount: result.outboxMessageCount,
+				fanOutMessageCount: result.fanOutMessageCount ?? 0,
+			},
+			'Post created',
+		);
+		return result.mappedPost;
 	}
 
 	private async buildFollowerMessages(
@@ -198,7 +212,7 @@ class PostService {
 				correlationId,
 			};
 			await this.messagesOutboxRepository.create(message, client);
-			logger.info({ postId: id }, 'Post deleted message fanned out via Kafka');
+			logger.info({ postId: id }, 'Post deleted');
 		});
 	}
 }

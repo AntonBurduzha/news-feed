@@ -36,12 +36,19 @@ async function start(): Promise<void> {
 					case KafkaTopics.PostDeletedV1:
 						await postsProjectionService.upsertById({ _id: postId, deletedAt: new Date() });
 						logger.info(`Post projection marked as deleted for post id ${postId}`);
-						await commentsService.deleteCommentsByPostId(postId);
-						logger.info(`Comments deleted for post id ${postId}`);
+						// eslint-disable-next-line no-case-declarations
+						const deletedCount = await commentsService.deleteCommentsByPostId(postId);
+						logger.info(
+							{ postId, deletedCommentCount: deletedCount, event: KafkaTopics.PostDeletedV1 },
+							'Projection deleted and comments purged',
+						);
 						break;
 					case KafkaTopics.PostCreatedV1:
 						await postsProjectionService.upsertById({ _id: postId, userId });
-						logger.info(`Post projection created for post id ${postId}`);
+						logger.info(
+							{ postId, userId, event: KafkaTopics.PostCreatedV1 },
+							'Projection upserted',
+						);
 						break;
 					default:
 						logger.error({ topic }, 'Unknown topic');
@@ -49,7 +56,12 @@ async function start(): Promise<void> {
 				}
 			} catch (error) {
 				logger.error(
-					{ err: normalizeError(error) },
+					{
+						dlqReason: normalizeError(error).message,
+						originalTopic: topic,
+						originalPartition: partition,
+						failedAt: new Date().toISOString(),
+					},
 					`Error consuming ${KafkaTopics.PostDeletedV1} message, sending to DLQ`,
 				);
 				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [

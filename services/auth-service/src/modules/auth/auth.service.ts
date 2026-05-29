@@ -2,6 +2,7 @@ import { DatabaseError } from 'pg';
 import httpStatus from 'http-status';
 import bcrypt from 'bcrypt';
 import { AppError, ConflictError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import { cacheToken } from '@/db/redis';
 import {
 	hashRefreshToken,
@@ -36,16 +37,19 @@ class AuthService {
 		const { raw: refreshToken, tokenHash, expiresAt } = await generateRefreshToken();
 		await this.authRepository.createRefreshToken({ userId, tokenHash, expiresAt });
 		await cacheToken(refreshToken, userId, ACCESS_TOKEN_TTL_SEC);
+		logger.info({ userId, tokenType: 'access' }, 'Token issued');
 		return { accessToken, refreshToken, userId };
 	}
 
 	async login(input: LoginRequest): Promise<{ accessToken: string; refreshToken: string }> {
 		const user = await this.authRepository.getUserByEmail(input.body.email);
 		if (!user) {
+			logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
 			throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 		}
 		const isValid = await bcrypt.compare(input.body.password, user.password_hash);
 		if (!isValid) {
+			logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
 			throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 		}
 		const accessToken = await signAccessToken(user.id);

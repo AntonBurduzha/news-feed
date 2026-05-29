@@ -55,7 +55,12 @@ async function run(): Promise<void> {
 				// TODO: Implement post-fan-out-consumer logic
 			} catch (error) {
 				logger.error(
-					{ err: normalizeError(error) },
+					{
+						dlqReason: normalizeError(error).message,
+						originalTopic: topic,
+						originalPartition: partition,
+						failedAt: new Date().toISOString(),
+					},
 					'Error consuming post fan-out message, sending to DLQ',
 				);
 				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
