@@ -1,7 +1,14 @@
 import { Kafka, logLevel, type Consumer, type EachMessagePayload } from 'kafkajs';
+import { env } from '@/config/env';
+import {
+	kafkaMessagesConsumedTotal,
+	kafkaConsumerProcessingDuration,
+	kafkaConsumerLag,
+} from '@/lib/metrics';
 import { logger } from '@/lib/logger';
 import { createFollowerPartitionAssigner } from '@/kafka/partition-assigner';
 import { formatKafkaTimestamp } from '@/utils/date';
+import { normalizeError } from '@/lib/errors';
 
 class KafkaConsumer {
 	private readonly kafka: Kafka;
@@ -45,6 +52,11 @@ class KafkaConsumer {
 			eachMessage: async (payload: EachMessagePayload) => {
 				const { topic, partition, message } = payload;
 				const correlationId = message.headers?.['x-correlation-id']?.toString();
+				const endTimer = kafkaConsumerProcessingDuration.startTimer({
+					topic,
+					consumer_group: this.groupId,
+					service: env.SERVICE_NAME,
+				});
 				logger.info(
 					{
 						topic,
@@ -58,9 +70,51 @@ class KafkaConsumer {
 					},
 					'Consumed Kafka message',
 				);
-				await topicCallback(payload);
+				try {
+					await topicCallback(payload);
+					kafkaMessagesConsumedTotal.inc({
+						topic,
+						consumer_group: this.groupId,
+						service: env.SERVICE_NAME,
+					});
+				} finally {
+					endTimer();
+				}
 			},
 		});
+		setInterval(
+			() =>
+				void this.pollConsumerLag(this.kafka, this.groupId, [topic]).catch(error => {
+					logger.error({ err: normalizeError(error) }, 'Failed to poll consumer lag');
+				}),
+			30_000,
+		).unref();
+	}
+
+	async pollConsumerLag(kafka: Kafka, groupId: string, topics: string[]): Promise<void> {
+		const admin = kafka.admin();
+		await admin.connect();
+		try {
+			const offsets = await admin.fetchOffsets({ groupId, topics });
+			for (const { topic, partitions } of offsets) {
+				const highWaterMarks = await admin.fetchTopicOffsets(topic);
+				for (const { partition, offset } of partitions) {
+					const high = Number(highWaterMarks.find(p => p.partition === partition)?.offset ?? '0');
+					const lag = Math.max(0, high - Number(offset));
+					kafkaConsumerLag.set(
+						{
+							topic,
+							consumer_group: groupId,
+							partition: String(partition),
+							service: env.SERVICE_NAME,
+						},
+						lag,
+					);
+				}
+			}
+		} finally {
+			await admin.disconnect();
+		}
 	}
 }
 

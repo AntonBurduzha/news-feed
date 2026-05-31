@@ -1,5 +1,6 @@
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { dlqMessagesTotal } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
 import { KafkaTopics } from '@/kafka/topics';
 import KafkaConsumer from '@/kafka/consumer';
@@ -63,6 +64,7 @@ async function run(): Promise<void> {
 					},
 					'Error consuming post fan-out message, sending to DLQ',
 				);
+				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
 				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
 					{
 						key: key!.toString(),

@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { pgPoolConnections } from '@/lib/metrics';
 
 export const db = new Pool({
 	host: env.POSTGRES_DB_HOST,
@@ -36,4 +37,17 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
 	} finally {
 		client.release();
 	}
+}
+
+export function startPgPoolMetrics(): void {
+	setInterval(() => {
+		// pg.Pool API: totalCount = all connections; idleCount = available in pool
+		// waitingCount = requests queued waiting for a connection (saturation signal)
+		pgPoolConnections.set(
+			{ state: 'active', service: env.SERVICE_NAME },
+			db.totalCount - db.idleCount, // connections currently executing a query
+		);
+		pgPoolConnections.set({ state: 'idle', service: env.SERVICE_NAME }, db.idleCount);
+		pgPoolConnections.set({ state: 'waiting', service: env.SERVICE_NAME }, db.waitingCount);
+	}, 15_000).unref(); // poll every 15s — balance freshness vs overhead
 }

@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
-import { db, checkPostgresConnection } from '@/db/postgres';
+import { db, checkPostgresConnection, startPgPoolMetrics } from '@/db/postgres';
 // import { initPostgresDB, dropPostgresDB } from '@/db/postgres/init-postgres-db';
 import { kafkaAdmin } from '@/kafka/admin';
 import { logger } from '@/lib/logger';
@@ -49,6 +49,7 @@ async function start(): Promise<void> {
 	await checkPostgresConnection();
 	// await initPostgresDB();
 	// await dropPostgresDB();
+	startPgPoolMetrics();
 
 	await kafkaAdmin.connect();
 

@@ -1,10 +1,11 @@
 import type { Server } from 'node:http';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
-import { connectMongo, disconnectMongo } from '@/db/mongo';
+import { connectMongo, disconnectMongo, startMongoPoolMetrics } from '@/db/mongo';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
 import { KafkaTopics } from '@/kafka/topics';
+import { dlqMessagesTotal } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 import { commentsService } from '@/modules/comments/comments.service';
@@ -20,6 +21,7 @@ const consumer = new KafkaConsumer(
 
 async function start(): Promise<void> {
 	await connectMongo();
+	startMongoPoolMetrics();
 	await consumer.connect();
 	await kafkaProducer.connect();
 
@@ -64,6 +66,7 @@ async function start(): Promise<void> {
 					},
 					`Error consuming ${KafkaTopics.PostDeletedV1} message, sending to DLQ`,
 				);
+				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
 				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
 					{
 						key: key!.toString(),

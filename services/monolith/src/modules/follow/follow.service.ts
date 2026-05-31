@@ -1,5 +1,7 @@
+import { env } from '@/config/env';
 import { NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
+import { followsCreatedTotal, followsDeletedTotal } from '@/lib/metrics';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 import { followsRepository } from './follow.repository';
 import type { CreateFollowInput, Follow, FollowRow } from './follow.types';
@@ -39,6 +41,7 @@ class FollowService {
 		if (!follow) {
 			throw new Error('Database did not return the created follow');
 		}
+		followsCreatedTotal.inc({ service: env.SERVICE_NAME });
 		try {
 			const partitionIndex = await this.followerPartitionsService.getOrAssignPartition(
 				input.followerId,
@@ -76,7 +79,7 @@ class FollowService {
 		if (!deleted) {
 			throw new NotFoundError(`Follow ${id} was not found`);
 		}
-
+		followsDeletedTotal.inc({ service: env.SERVICE_NAME });
 		const remainingFollows = await this.followsRepository.countByFollowerId(follow.follower_id);
 		if (remainingFollows === 0) {
 			try {

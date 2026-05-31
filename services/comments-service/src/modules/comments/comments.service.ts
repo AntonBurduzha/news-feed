@@ -1,4 +1,6 @@
+import { env } from '@/config/env';
 import { NotFoundError } from '@/lib/errors';
+import { commentsCreatedTotal, commentsDeletedTotal } from '@/lib/metrics';
 import { postsProjectionRepository } from '@/modules/posts-projection/posts-projection.repository';
 import { commentsRepository } from './comments.repository';
 import type {
@@ -30,6 +32,7 @@ class CommentsService {
 		// 	throw new NotFoundError(`User ${input.author.userId} was not found`);
 		// }
 		const comment = await commentsRepository.create(input);
+		commentsCreatedTotal.inc({ service: env.SERVICE_NAME });
 		return mapComment(comment.toObject());
 	}
 
@@ -52,6 +55,7 @@ class CommentsService {
 		if (!deleted) {
 			throw new NotFoundError(`Comment ${id} was not found`);
 		}
+		commentsDeletedTotal.inc({ service: env.SERVICE_NAME });
 	}
 
 	async deleteCommentsByPostId(postId: string): Promise<number> {

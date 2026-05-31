@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { httpLogger } from '@/lib/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/error-handler';
 import { contextMiddleware, requestContext } from '@/middleware/context';
+import { metricsMiddleware } from '@/middleware/metrics';
 import { createAuthClient, type UserContext } from '@news-feed/auth-client';
 import { env } from '@/config/env';
 import healthRoute from '@/routes/health.route';
@@ -12,6 +13,7 @@ import userRoutes from '@/modules/users/users.routes';
 import postRoutes from '@/modules/posts/posts.routes';
 import followRoutes from '@/modules/follow/follow.routes';
 import commentProxy from '@/modules/comments/comments.proxy';
+import metricsRoute from '@/routes/metrics.route';
 
 export const authClient = createAuthClient({
 	jwksUrl: env.AUTH_JWKS_URL,
@@ -25,6 +27,7 @@ const app = express();
 app.disable('x-powered-by');
 app.use(contextMiddleware);
 app.use(httpLogger);
+app.use(metricsMiddleware);
 app.use(helmet());
 app.use(
 	cors({
@@ -38,6 +41,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // INFO: Public routes
 app.use(healthRoute);
+app.use(metricsRoute);
 
 app.use(authClient.middleware());
 app.use((req, _res, next) => {

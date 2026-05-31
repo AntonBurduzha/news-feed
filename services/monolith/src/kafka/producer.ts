@@ -1,6 +1,8 @@
 import { CompressionTypes, type Producer } from 'kafkajs';
 import { kafka } from '@/config/kafka';
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { kafkaMessagesProducedTotal } from '@/lib/metrics';
 
 type KafkaMessage = {
 	key: string;
@@ -42,7 +44,7 @@ class KafkaProducer {
 			compression: CompressionTypes.GZIP,
 			messages,
 		});
-
+		kafkaMessagesProducedTotal.inc({ topic, service: env.SERVICE_NAME });
 		logger.info(
 			{
 				topic,

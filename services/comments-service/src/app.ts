@@ -3,8 +3,10 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import healthRoute from '@/routes/health.route';
+import metricsRoute from '@/routes/metrics.route';
 import { httpLogger } from '@/lib/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/error-handler';
+import { metricsMiddleware } from '@/middleware/metrics';
 import { contextMiddleware, requestContext } from '@/middleware/context';
 import { createAuthClient, type UserContext } from '@news-feed/auth-client';
 import { env } from '@/config/env';
@@ -22,6 +24,7 @@ const app = express();
 app.disable('x-powered-by');
 app.use(contextMiddleware);
 app.use(httpLogger);
+app.use(metricsMiddleware);
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(compression());
@@ -30,7 +33,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // INFO: Public routes
 app.use(healthRoute);
-
+app.use(metricsRoute);
 app.use(authClient.middleware());
 app.use((req, _res, next) => {
 	const store = requestContext.getStore();

@@ -1,8 +1,10 @@
 import { DatabaseError } from 'pg';
 import httpStatus from 'http-status';
 import bcrypt from 'bcrypt';
+import { env } from '@/config/env';
 import { AppError, ConflictError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
+import { authFailuresTotal, authTokensIssuedTotal } from '@/lib/metrics';
 import { cacheToken } from '@/db/redis';
 import {
 	hashRefreshToken,
@@ -34,8 +36,10 @@ class AuthService {
 			throw error;
 		}
 		const accessToken = await signAccessToken(userId);
+		authTokensIssuedTotal.inc({ type: 'access', service: env.SERVICE_NAME });
 		const { raw: refreshToken, tokenHash, expiresAt } = await generateRefreshToken();
 		await this.authRepository.createRefreshToken({ userId, tokenHash, expiresAt });
+		authTokensIssuedTotal.inc({ type: 'refresh', service: env.SERVICE_NAME });
 		await cacheToken(refreshToken, userId, ACCESS_TOKEN_TTL_SEC);
 		logger.info({ userId, tokenType: 'access' }, 'Token issued');
 		return { accessToken, refreshToken, userId };
@@ -45,16 +49,20 @@ class AuthService {
 		const user = await this.authRepository.getUserByEmail(input.body.email);
 		if (!user) {
 			logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
+			authFailuresTotal.inc({ reason: 'invalid_credentials', service: env.SERVICE_NAME });
 			throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 		}
 		const isValid = await bcrypt.compare(input.body.password, user.password_hash);
 		if (!isValid) {
 			logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
+			authFailuresTotal.inc({ reason: 'invalid_credentials', service: env.SERVICE_NAME });
 			throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 		}
 		const accessToken = await signAccessToken(user.id);
+		authTokensIssuedTotal.inc({ type: 'access', service: env.SERVICE_NAME });
 		const { raw: refreshToken, tokenHash, expiresAt } = await generateRefreshToken();
 		await this.authRepository.createRefreshToken({ userId: user.id, tokenHash, expiresAt });
+		authTokensIssuedTotal.inc({ type: 'refresh', service: env.SERVICE_NAME });
 		await cacheToken(refreshToken, user.id, ACCESS_TOKEN_TTL_SEC);
 		return { accessToken, refreshToken };
 	}
@@ -67,6 +75,7 @@ class AuthService {
 			throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
 		}
 		const accessToken = await signAccessToken(user.user_id);
+		authTokensIssuedTotal.inc({ type: 'access', service: env.SERVICE_NAME });
 		await cacheToken(accessToken, user.user_id, ACCESS_TOKEN_TTL_SEC);
 		return { accessToken };
 	}

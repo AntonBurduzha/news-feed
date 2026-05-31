@@ -6,12 +6,14 @@ import routes from '@/routes';
 import { httpLogger } from '@/lib/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/error-handler';
 import { contextMiddleware } from '@/middleware/context';
+import { metricsMiddleware } from '@/middleware/metrics';
 
 const app = express();
 
 app.disable('x-powered-by');
 app.use(contextMiddleware);
 app.use(httpLogger);
+app.use(metricsMiddleware);
 app.use(helmet());
 app.use(
 	cors({

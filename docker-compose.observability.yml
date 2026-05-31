@@ -27,7 +27,7 @@ services:
       - '12345:12345'
     volumes:
       - ./infra/alloy/config.logs-only.alloy:/etc/alloy/config.alloy
-      - ./logs:/var/log/news-feed:ro # host log files mounted read-only into Alloy container
+      - ./logs:/var/log/news-feed:ro
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki

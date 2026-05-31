@@ -1,6 +1,8 @@
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
 import { AppError, NotFoundError } from '@/lib/errors';
+import { postsCreatedTotal, postsDeletedTotal } from '@/lib/metrics';
 import { KafkaTopics } from '@/kafka/topics';
 import { requestContext } from '@/middleware/context';
 import { followsRepository } from '@/modules/follow/follow.repository';
@@ -111,6 +113,7 @@ class PostService {
 		if (!result) {
 			throw new AppError('Database did not return the created post');
 		}
+		postsCreatedTotal.inc({ service: env.SERVICE_NAME });
 		logger.info(
 			{
 				postId: result.mappedPost.id,
@@ -214,6 +217,7 @@ class PostService {
 			await this.messagesOutboxRepository.create(message, client);
 			logger.info({ postId: id }, 'Post deleted');
 		});
+		postsDeletedTotal.inc({ service: env.SERVICE_NAME });
 	}
 }
 
