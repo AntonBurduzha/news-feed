@@ -35,3 +35,23 @@ loki.write "default" {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
+
+// --- METRICS: scrape service /metrics → Mimir ---
+
+// prometheus.scrape: like Prometheus scrape_config — polls /metrics on an interval
+prometheus.scrape "news_feed_services" {
+  targets = [
+    {"__address__" = "host.docker.internal:3000", "service" = "news-feed-monolith"},
+    {"__address__" = "host.docker.internal:3001", "service" = "comments-svc"},
+    {"__address__" = "host.docker.internal:3002", "service" = "auth-svc"},
+  ]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+// prometheus.remote_write: pushes scraped samples to Mimir (not local TSDB)
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}

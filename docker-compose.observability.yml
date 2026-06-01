@@ -8,6 +8,15 @@ services:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
 
+  mimir:
+    image: grafana/mimir:2.12.0
+    ports:
+      - '9009:9009'
+    volumes:
+      - ./infra/mimir/mimir-config.yaml:/etc/mimir.yaml
+      - mimir_data:/data
+    command: -config.file=/etc/mimir.yaml
+
   grafana:
     image: grafana/grafana:11.0.0
     ports:
@@ -16,10 +25,11 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
-      - ./infra/grafana/provisioning/datasources/loki.yaml:/etc/grafana/provisioning/datasources/loki.yaml
+      - ./infra/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       - grafana_data:/var/lib/grafana
     depends_on:
       - loki
+      - mimir
 
   alloy:
     image: grafana/alloy:v1.0.0
@@ -31,7 +41,9 @@ services:
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki
+      - mimir
 
 volumes:
   loki_data:
   grafana_data:
+  mimir_data:

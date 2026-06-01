@@ -5,7 +5,7 @@ import { env } from '@/config/env';
 export const metricsMiddleware: RequestHandler = (req, res, next) => {
 	const end = httpRequestDuration.startTimer();
 	res.on('finish', () => {
-		const route = (req.route as IRoute).path ?? req.path;
+		const route = (req.route as IRoute)?.path ?? req.path;
 		const labels = {
 			method: req.method,
 			route,
