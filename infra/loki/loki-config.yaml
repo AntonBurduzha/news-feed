@@ -1,3 +1,4 @@
+# Loki
 auth_enabled: false
 
 server:
@@ -24,5 +25,6 @@ schema_config:
         prefix: index_
         period: 24h
 
+# Protect against runaway log volume during dev
 limits_config:
   retention_period: 168h

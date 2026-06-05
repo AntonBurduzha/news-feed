@@ -1,6 +1,8 @@
 import type { Request, RequestHandler } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { trace } from '@opentelemetry/api';
+import client from 'prom-client';
 
 export type UserContext = {
 	userId: string;
@@ -13,6 +15,18 @@ export interface AuthClient {
 	//redis: RedisClientType;
 	disconnect(): Promise<void>;
 }
+
+export const redisCacheHitsTotal = new client.Counter({
+	name: 'redis_cache_hits_total',
+	help: 'Redis cache hits',
+	labelNames: ['operation', 'service'] as const,
+});
+
+export const redisCacheMissesTotal = new client.Counter({
+	name: 'redis_cache_misses_total',
+	help: 'Redis cache misses',
+	labelNames: ['operation', 'service'] as const,
+});
 
 export function createAuthClient(cfg: {
 	jwksUrl: string;
@@ -29,14 +43,19 @@ export function createAuthClient(cfg: {
 
 	async function verify(bearer: string): Promise<UserContext> {
 		const token = bearer.replace(/^Bearer\s+/i, '');
+		const span = trace.getActiveSpan();
 		try {
 			const cached = await redisClient.get(`auth:${token}`);
 			if (cached) {
+				span?.addEvent('jwks.cache_hit');
+				redisCacheHitsTotal.inc({ operation: 'verify', service: cfg.audience });
 				return JSON.parse(cached) as UserContext;
 			}
 		} catch {
 			// Redis down, continue without caching
 		}
+		span?.addEvent('jwks.cache_miss', { jwksUrl: cfg.jwksUrl });
+		redisCacheMissesTotal.inc({ operation: 'verify', service: cfg.audience });
 		const { payload } = await jwtVerify(token, jwks, {
 			audience: cfg.audience,
 			issuer: cfg.issuer,

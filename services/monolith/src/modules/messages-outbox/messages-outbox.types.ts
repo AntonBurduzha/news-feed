@@ -4,6 +4,7 @@ export type CreateMessageOutboxInput = {
 	topic: string;
 	payload: Record<string, unknown>;
 	correlationId: string;
+	traceId: string | undefined;
 };
 
 export type MessageOutboxRow = {
@@ -11,6 +12,7 @@ export type MessageOutboxRow = {
 	topic: string;
 	payload: Record<string, unknown>;
 	correlation_id: string;
+	trace_id: string | null;
 };
 
 export type MessageOutbox = {
@@ -18,4 +20,5 @@ export type MessageOutbox = {
 	topic: string;
 	payload: Record<string, unknown>;
 	correlationId: string;
+	traceId: string | null;
 };

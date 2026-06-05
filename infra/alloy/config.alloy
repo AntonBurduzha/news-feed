@@ -1,0 +1,87 @@
+// LOGS: tail host log files → push to Loki
+
+// Declare which log files to watch and tag each with a "service" label
+  path_targets = [
+    { __path__ = "/var/log/news-feed/monolith.log",       service = "news-feed-monolith" },
+    { __path__ = "/var/log/news-feed/auth-svc.log",       service = "auth-svc"           },
+    { __path__ = "/var/log/news-feed/comments-svc.log",   service = "comments-svc"       },
+    { __path__ = "/var/log/news-feed/outbox-relay.log",   service = "outbox-relay"       },
+  ]
+}
+
+// Tail each discovered file, stream new lines into the processing pipeline
+loki.source.file "news_feed" {
+  targets    = local.file_match.news_feed_logs.targets
+  forward_to = [loki.process.news_feed.receiver]
+}
+
+// Parse JSON fields from each log line and promote them to Loki labels
+// Only "level" and "service" become labels (low cardinality)
+loki.process "news_feed" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = {
+      level   = "level",
+      service = "service",
+    }
+  }
+
+  stage.labels {
+    values = {
+      level   = "",
+      service = "",
+    }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+
+// METRICS: scrape /metrics → push to Mimir
+// Poll each service's /metrics endpoint every 15 seconds.
+prometheus.scrape "news_feed_services" {
+  targets = [
+    { "__address__" = "host.docker.internal:3000", "service" = "news-feed-monolith" },
+    { "__address__" = "host.docker.internal:3001", "service" = "comments-svc"       },
+    { "__address__" = "host.docker.internal:3002", "service" = "auth-svc"           },
+    { "__address__" = "host.docker.internal:3010", "service" = "outbox-relay" },
+  ]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}
+
+
+// TRACES: receive OTLP spans → forward to Tempo
+// Listen for OpenTelemetry spans from services sent by gRPC on 4317
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// Forward received spans to Tempo's OTLP gRPC endpoint
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317" // Tempo's distributor listens on 4317 inside Docker network
+    tls {
+      insecure = true // no TLS needed between containers on the same Docker network
+    }
+  }
+}

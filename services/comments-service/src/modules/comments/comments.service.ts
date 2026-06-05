@@ -63,6 +63,7 @@ class CommentsService {
 		if (deletedCount === 0) {
 			throw new NotFoundError(`Comments for post id ${postId} were not found`);
 		}
+		commentsDeletedTotal.inc({ service: env.SERVICE_NAME }, deletedCount);
 		return deletedCount;
 	}
 }

@@ -1,11 +1,11 @@
-# Single-node Mimir for local dev — do not use in production as-is.
+# Mimir
 multitenancy_enabled: false
 
 server:
   http_listen_port: 9009
 
 blocks_storage:
-  backend: filesystem
+  backend: filesystem # local filesystem for dev
   bucket_store:
     sync_dir: /data/mimir/tsdb-sync
   filesystem:
@@ -19,23 +19,27 @@ compactor:
     kvstore:
       store: inmemory
 
+# Distributor receives remote-write samples from Alloy and routes to ingesters
 distributor:
   ring:
     kvstore:
       store: inmemory
 
+# Ingester writes incoming samples into the TSDB head block
 ingester:
   ring:
     kvstore:
       store: inmemory
-    replication_factor: 1
+    replication_factor: 1 # single node — no replication
 
+# Store gateway serves queries against compacted blocks
 store_gateway:
   sharding_ring:
     kvstore:
       store: inmemory
     replication_factor: 1
 
+# Ruler storage — for Mimir-managed recording/alerting rules
 ruler_storage:
   backend: filesystem
   filesystem:
@@ -44,6 +48,7 @@ ruler_storage:
 ruler:
   enable_api: true
 
+# Rate limits
 limits:
   ingestion_rate: 100000
   max_global_series_per_user: 500000

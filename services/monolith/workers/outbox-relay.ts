@@ -1,3 +1,6 @@
+import http from 'node:http';
+import promClient from 'prom-client';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { kafkaProducer } from '@/kafka/producer';
 import { logger } from '@/lib/logger';
@@ -12,64 +15,130 @@ import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox
 import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.constants';
 
 let outboxRelayInterval: NodeJS.Timeout | null = null;
+const tracer = trace.getTracer('outbox-relay');
+
+function startMetricsServer(port: number): http.Server {
+	const server = http.createServer((req, res) => {
+		if (req.url !== '/metrics') {
+			res.statusCode = 404;
+			res.end();
+			return;
+		}
+		void promClient.register.metrics().then(body => {
+			res.setHeader('Content-Type', promClient.register.contentType);
+			res.end(body);
+		});
+	});
+	server.listen(port, () => {
+		logger.info({ port }, 'Metrics server listening');
+	});
+	return server;
+}
+
+const METRICS_PORT = Number(process.env.METRICS_PORT ?? 3010);
 
 async function run(): Promise<void> {
+	const metricsServer = startMetricsServer(METRICS_PORT);
 	logger.info('Starting outbox relay worker');
 	await kafkaProducer.connect();
 
 	outboxRelayInterval = setInterval(() => {
 		void (async () => {
-			const batchStartedAt = Date.now();
-			try {
-				const pendingMessages = await messagesOutboxService.findPendingMessages();
-				outboxPendingMessages.set({ service: env.SERVICE_NAME }, pendingMessages.length);
-				if (pendingMessages.length === 0) {
-					return;
-				}
-				logger.info(
-					{ pendingCount: pendingMessages.length },
-					'Found pending messages in outbox relay worker',
-				);
-				let publishedCount = 0;
-				for (const message of pendingMessages) {
-					try {
-						await kafkaProducer.sendMessage(message.topic, [
-							{
-								key: message.payload.key as string,
-								value: message.payload.value as string,
-								headers: {
-									'x-correlation-id': message.correlationId,
-								},
-								...(message.payload.partition
-									? { partition: message.payload.partition as number }
-									: {}),
-							},
-						]);
-					} catch (error) {
-						outboxPublishFailuresTotal.inc({ service: env.SERVICE_NAME, topic: message.topic });
-						logger.error(
-							{ err: normalizeError(error), topic: message.topic },
-							'Failed to publish message to Kafka',
-						);
+			const batchSpan = tracer.startSpan('outbox-relay.batch');
+
+			// INFO: context.with() makes batchSpan "active" for downstream auto-instrumentation (pg, kafka)
+			await context.with(trace.setSpan(context.active(), batchSpan), async () => {
+				const batchStartedAt = Date.now();
+				try {
+					const pendingMessages = await messagesOutboxService.findPendingMessages();
+					batchSpan.setAttribute('batch.size', pendingMessages.length);
+					outboxPendingMessages.set(
+						{ service: env.OUTBOX_RELAY_SERVICE_NAME },
+						pendingMessages.length,
+					);
+					if (pendingMessages.length === 0) {
+						return;
 					}
-					kafkaMessagesProducedTotal.inc({ topic: message.topic, service: env.SERVICE_NAME });
-					publishedCount += 1;
+					logger.info(
+						{ pendingCount: pendingMessages.length },
+						'Found pending messages in outbox relay worker',
+					);
+					let publishedCount = 0;
+					for (const message of pendingMessages) {
+						const remoteContext = message.traceId
+							? {
+									traceId: message.traceId,
+									spanId: '0000000000000000',
+									traceFlags: 1,
+								}
+							: undefined;
+
+						const publishSpan = tracer.startSpan('outbox-relay.publish', {
+							attributes: { 'kafka.topic': message.topic },
+							links: remoteContext ? [{ context: remoteContext }] : [],
+						});
+						await context.with(trace.setSpan(context.active(), publishSpan), async () => {
+							try {
+								await kafkaProducer.sendMessage(message.topic, [
+									{
+										key: message.payload.key as string,
+										value: message.payload.value as string,
+										headers: {
+											'x-correlation-id': message.correlationId,
+										},
+										...(message.payload.partition
+											? { partition: message.payload.partition as number }
+											: {}),
+									},
+								]);
+								kafkaMessagesProducedTotal.inc({
+									topic: message.topic,
+									service: env.OUTBOX_RELAY_SERVICE_NAME,
+								});
+								publishedCount += 1;
+							} catch (error) {
+								publishSpan.recordException(error as Error);
+								publishSpan.setStatus({
+									code: SpanStatusCode.ERROR,
+									message: (error as Error).message,
+								});
+								outboxPublishFailuresTotal.inc({
+									service: env.OUTBOX_RELAY_SERVICE_NAME,
+									topic: message.topic,
+								});
+								logger.error(
+									{ err: normalizeError(error), topic: message.topic },
+									'Failed to publish message to Kafka',
+								);
+							} finally {
+								publishSpan.end();
+							}
+						});
+					}
+					logger.info({ publishedCount }, 'Published messages in outbox relay worker');
+					await messagesOutboxService.updateMessageStatus(
+						pendingMessages.map(m => m.id),
+						MessageOutboxStatus.Sent,
+					);
+					batchSpan.setAttribute('batch.published', publishedCount);
+					outboxRelayDurationSeconds.observe(
+						{ service: env.OUTBOX_RELAY_SERVICE_NAME },
+						(Date.now() - batchStartedAt) / 1000,
+					);
+				} catch (error) {
+					batchSpan.recordException(error as Error);
+					batchSpan.setStatus({
+						code: SpanStatusCode.ERROR,
+						message: (error as Error).message,
+					});
+					logger.error(
+						{ err: normalizeError(error) },
+						'Failed to find pending messages in outbox relay worker',
+					);
+				} finally {
+					batchSpan.end();
 				}
-				logger.info({ publishedCount }, 'Published messages in outbox relay worker');
-				await messagesOutboxService.updateMessageStatus(
-					pendingMessages.map(m => m.id),
-					MessageOutboxStatus.Sent,
-				);
-				outboxRelayDurationSeconds.observe(
-					{ service: env.SERVICE_NAME },
-					(Date.now() - batchStartedAt) / 1000,
-				);
-			} catch (error) {
-				logger.error(
-					{ err: normalizeError(error) },
-					'Failed to find pending messages in outbox relay worker',
-				);
-			}
+			});
 		})();
 	}, 5000);
 
@@ -77,6 +146,7 @@ async function run(): Promise<void> {
 		try {
 			logger.info('Shutting down outbox relay worker');
 			await kafkaProducer.disconnect();
+			metricsServer.close();
 		} catch (error) {
 			logger.error(
 				{ err: normalizeError(error) },

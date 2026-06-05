@@ -5,7 +5,7 @@
 	"type": "module",
 	"main": "./dist/src/index.js",
 	"scripts": {
-		"dev": "tsx watch src/index.ts",
+		"dev": "tsx --import ./src/lib/tracing.ts --watch src/index.ts",
 		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
 		"start": "node dist/src/index.js",
 		"lint": "eslint .",
@@ -15,6 +15,13 @@
 	"dependencies": {
 		"@news-feed/auth-client": "*",
 		"@news-feed/contracts": "*",
+		"@opentelemetry/api": "^1.9.1",
+		"@opentelemetry/auto-instrumentations-node": "^0.76.0",
+		"@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",
+		"@opentelemetry/instrumentation-kafkajs": "^0.27.0",
+		"@opentelemetry/instrumentation-mongodb": "^0.71.0",
+		"@opentelemetry/sdk-node": "^0.218.0",
+		"@opentelemetry/sdk-trace-base": "^2.7.1",
 		"compression": "^1.8.1",
 		"cors": "^2.8.6",
 		"express": "^5.2.1",

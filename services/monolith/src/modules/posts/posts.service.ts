@@ -1,3 +1,4 @@
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
@@ -46,91 +47,115 @@ class PostService {
 	}
 
 	async createPost(input: CreatePostInput): Promise<Post> {
-		const user = await this.usersPort.getUser(input.userId);
-		if (!user) {
-			throw new NotFoundError(`User ${input.userId} was not found`);
-		}
-		const result: {
-			mappedPost: Post;
-			outboxMessageCount: number;
-			followerCount: number;
-			fanOutMessageCount: number;
-		} = await withTransaction(async client => {
-			const newPost = await this.postRepository.create(input, client);
-			const mappedPost = mapPost(newPost);
-			const correlationId = requestContext.getStore()?.correlationId ?? '';
-			const postCreatedMsg: CreateMessageOutboxInput = {
-				topic: KafkaTopics.PostCreatedV1,
-				payload: {
-					key: mappedPost.id,
-					value: JSON.stringify({
-						v: 1,
-						postId: mappedPost.id,
-						userId: mappedPost.userId,
-						createdAt: new Date().toISOString(),
-					}),
-				},
-				correlationId,
-			};
-			let outboxMessageCount = 0;
-			await this.messagesOutboxRepository.create(postCreatedMsg, client);
-			outboxMessageCount += 1;
-			logger.info({ postId: mappedPost.id }, 'Post created message fanned out via Kafka');
-			const followerIds = await this.followsRepository.findFollowersByFollowingId(
-				mappedPost.userId,
-			);
-			if (followerIds.length === 0) {
-				logger.info(
-					{ postId: mappedPost.id, userId: mappedPost.userId },
-					'Post author has no followers — skipping Kafka fan-out',
-				);
-				return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
-			}
-			const followersMessages = await this.buildFollowerMessages(
-				mappedPost,
-				followerIds,
-				correlationId,
-			);
-			if (followersMessages.length === 0) {
-				logger.warn(
-					{ postId: mappedPost.id, userId: mappedPost.userId },
-					'No followers have valid partition assignments — skipping Kafka fan-out',
-				);
-				return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
-			}
-
-			for (const msg of followersMessages) {
-				await this.messagesOutboxRepository.create(msg, client);
-				outboxMessageCount += 1;
-			}
-			return {
-				mappedPost,
-				outboxMessageCount,
-				followerCount: followerIds.length,
-				fanOutMessageCount: followersMessages.length,
-			};
+		const tracer = trace.getTracer('posts-service');
+		const span = tracer.startSpan('posts.createPost', {
+			attributes: { 'user.id': input.userId },
 		});
-		if (!result) {
-			throw new AppError('Database did not return the created post');
-		}
-		postsCreatedTotal.inc({ service: env.SERVICE_NAME });
-		logger.info(
-			{
-				postId: result.mappedPost.id,
-				userId: input.userId,
-				followerCount: result.followerCount,
-				outboxMessageCount: result.outboxMessageCount,
-				fanOutMessageCount: result.fanOutMessageCount ?? 0,
-			},
-			'Post created',
-		);
-		return result.mappedPost;
+
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const user = await this.usersPort.getUser(input.userId);
+				if (!user) {
+					throw new NotFoundError(`User ${input.userId} was not found`);
+				}
+				const result: {
+					mappedPost: Post;
+					outboxMessageCount: number;
+					followerCount: number;
+					fanOutMessageCount: number;
+				} = await withTransaction(async client => {
+					const newPost = await this.postRepository.create(input, client);
+					const mappedPost = mapPost(newPost);
+					const correlationId = requestContext.getStore()?.correlationId ?? '';
+
+					const spanContext = trace.getActiveSpan()?.spanContext();
+					const traceId = spanContext?.traceId;
+
+					const postCreatedMsg: CreateMessageOutboxInput = {
+						topic: KafkaTopics.PostCreatedV1,
+						payload: {
+							key: mappedPost.id,
+							value: JSON.stringify({
+								v: 1,
+								postId: mappedPost.id,
+								userId: mappedPost.userId,
+								createdAt: new Date().toISOString(),
+							}),
+						},
+						correlationId,
+						traceId,
+					};
+					let outboxMessageCount = 0;
+					await this.messagesOutboxRepository.create(postCreatedMsg, client);
+					outboxMessageCount += 1;
+					logger.info({ postId: mappedPost.id }, 'Post created message fanned out via Kafka');
+					const followerIds = await this.followsRepository.findFollowersByFollowingId(
+						mappedPost.userId,
+					);
+					span.setAttribute('follower.count', followerIds.length);
+					if (followerIds.length === 0) {
+						logger.info(
+							{ postId: mappedPost.id, userId: mappedPost.userId },
+							'Post author has no followers — skipping Kafka fan-out',
+						);
+						return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
+					}
+					const followersMessages = await this.buildFollowerMessages(
+						mappedPost,
+						followerIds,
+						correlationId,
+						traceId,
+					);
+					if (followersMessages.length === 0) {
+						logger.warn(
+							{ postId: mappedPost.id, userId: mappedPost.userId },
+							'No followers have valid partition assignments — skipping Kafka fan-out',
+						);
+						return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
+					}
+
+					for (const msg of followersMessages) {
+						await this.messagesOutboxRepository.create(msg, client);
+						outboxMessageCount += 1;
+					}
+					span.setAttribute('outbox.message_count', outboxMessageCount);
+					return {
+						mappedPost,
+						outboxMessageCount,
+						followerCount: followerIds.length,
+						fanOutMessageCount: followersMessages.length,
+					};
+				});
+				if (!result) {
+					throw new AppError('Database did not return the created post');
+				}
+				postsCreatedTotal.inc({ service: env.SERVICE_NAME });
+				logger.info(
+					{
+						postId: result.mappedPost.id,
+						userId: input.userId,
+						followerCount: result.followerCount,
+						outboxMessageCount: result.outboxMessageCount,
+						fanOutMessageCount: result.fanOutMessageCount ?? 0,
+					},
+					'Post created',
+				);
+				return result.mappedPost;
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 
 	private async buildFollowerMessages(
 		post: Post,
 		followerIds: string[],
 		correlationId: string,
+		traceId: string | undefined,
 	): Promise<CreateMessageOutboxInput[]> {
 		const messagesWithPartitions = await Promise.all(
 			followerIds.map(async followerId => {
@@ -158,6 +183,7 @@ class PostService {
 					partition: partition!,
 				},
 				correlationId,
+				traceId,
 			}));
 	}
 
@@ -196,28 +222,46 @@ class PostService {
 	}
 
 	async deletePost(id: string): Promise<void> {
-		await withTransaction(async client => {
-			const postIsDeleted = await this.postRepository.delete(id, client);
-			if (!postIsDeleted) {
-				throw new NotFoundError(`Post ${id} was not found`);
-			}
-			const correlationId = requestContext.getStore()?.correlationId ?? '';
-			const message: CreateMessageOutboxInput = {
-				topic: KafkaTopics.PostDeletedV1,
-				payload: {
-					key: id,
-					value: JSON.stringify({
-						v: 1,
-						postId: id,
-						createdAt: new Date().toISOString(),
-					}),
-				},
-				correlationId,
-			};
-			await this.messagesOutboxRepository.create(message, client);
-			logger.info({ postId: id }, 'Post deleted');
+		const tracer = trace.getTracer('posts-service');
+		const span = tracer.startSpan('posts.deletePost', {
+			attributes: { 'post.id': id },
 		});
-		postsDeletedTotal.inc({ service: env.SERVICE_NAME });
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				await withTransaction(async client => {
+					const postIsDeleted = await this.postRepository.delete(id, client);
+					if (!postIsDeleted) {
+						throw new NotFoundError(`Post ${id} was not found`);
+					}
+					const correlationId = requestContext.getStore()?.correlationId ?? '';
+					const spanContext = trace.getActiveSpan()?.spanContext();
+					const traceId = spanContext?.traceId;
+					const message: CreateMessageOutboxInput = {
+						topic: KafkaTopics.PostDeletedV1,
+						payload: {
+							key: id,
+							value: JSON.stringify({
+								v: 1,
+								postId: id,
+								createdAt: new Date().toISOString(),
+							}),
+						},
+						correlationId,
+						traceId,
+					};
+					await this.messagesOutboxRepository.create(message, client);
+					span.setAttribute('outbox.message_count', 1);
+					logger.info({ postId: id }, 'Post deleted');
+				});
+				postsDeletedTotal.inc({ service: env.SERVICE_NAME });
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 }
 

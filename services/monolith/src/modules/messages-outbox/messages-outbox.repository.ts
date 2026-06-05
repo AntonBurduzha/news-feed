@@ -10,14 +10,14 @@ class MessagesOutboxRepository {
 	async create(input: CreateMessageOutboxInput, client?: PoolClient): Promise<void> {
 		const connection = client ?? db;
 		await connection.query(
-			'INSERT INTO messages_outbox (topic, payload, correlation_id) VALUES ($1, $2, $3);',
-			[input.topic, input.payload, input.correlationId],
+			'INSERT INTO messages_outbox (topic, payload, correlation_id, trace_id) VALUES ($1, $2, $3, $4);',
+			[input.topic, input.payload, input.correlationId, input.traceId],
 		);
 	}
 
 	async findPendingMessages(): Promise<MessageOutboxRow[]> {
 		const { rows } = await db.query<MessageOutboxRow>(
-			`SELECT id, topic, payload, correlation_id
+			`SELECT id, topic, payload, correlation_id, trace_id
 			FROM messages_outbox
 			WHERE status = 'pending' AND retry_count < max_retries
 			ORDER BY created_at

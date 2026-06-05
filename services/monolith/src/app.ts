@@ -14,6 +14,7 @@ import postRoutes from '@/modules/posts/posts.routes';
 import followRoutes from '@/modules/follow/follow.routes';
 import commentProxy from '@/modules/comments/comments.proxy';
 import metricsRoute from '@/routes/metrics.route';
+// import testRoute from '@/routes/test.route';
 
 export const authClient = createAuthClient({
 	jwksUrl: env.AUTH_JWKS_URL,
@@ -40,6 +41,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // INFO: Public routes
+// app.use(testRoute);
 app.use(healthRoute);
 app.use(metricsRoute);
 

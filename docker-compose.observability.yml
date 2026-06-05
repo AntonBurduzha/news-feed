@@ -1,49 +1,89 @@
+# Observability stack — run alongside docker-compose.yml with:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# Architecture:
+#   Services (host) → Alloy → Loki (logs) + Mimir (metrics) + Tempo (traces) → Grafana (UI)
+#
+# Access:
+#   Grafana UI:  http://localhost:3003  (anonymous admin, no login needed)
+#   Alloy UI:    http://localhost:12345 (verify scrape targets and pipeline health)
+#   Loki API:    http://localhost:3100
+#   Mimir API:   http://localhost:9009
+#   Tempo API:   http://localhost:3200
+
 services:
+
+  # --- Loki: log aggregation ---
+  # Stores and indexes log lines pushed by Alloy. Grafana queries logs via LogQL.
   loki:
     image: grafana/loki:3.0.0
     ports:
-      - '3100:3100'
+      - '3100:3100' # Loki HTTP API
     volumes:
-      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml
-      - loki_data:/loki
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml # Loki config
+      - loki_data:/loki # persistent log storage
     command: -config.file=/etc/loki/local-config.yaml
 
+  # --- Mimir: Prometheus-compatible metrics storage ---
+  # Receives metric samples via remote-write from Alloy. Grafana queries with PromQL.
   mimir:
     image: grafana/mimir:2.12.0
     ports:
-      - '9009:9009'
+      - '9009:9009' # Mimir HTTP API: /prometheus for queries, /api/v1/push for writes
     volumes:
       - ./infra/mimir/mimir-config.yaml:/etc/mimir.yaml
-      - mimir_data:/data
+      - mimir_data:/data # persistent metrics storage
     command: -config.file=/etc/mimir.yaml
 
+  # --- Tempo: distributed tracing backend ---
+  # Stores spans sent via OTLP from Alloy. Grafana queries traces via TraceQL.
+  tempo:
+    image: grafana/tempo:2.4.0
+    ports:
+      - '3200:3200' # Tempo HTTP API — Grafana trace queries
+      - '4317:4317' # OTLP gRPC — services send spans here via Alloy
+      - '4318:4318' # OTLP HTTP — alternative to gRPC
+    volumes:
+      - ./infra/tempo/tempo-config.yaml:/etc/tempo.yaml
+      - tempo_data:/tmp/tempo # persistent trace storage
+    command: -config.file=/etc/tempo.yaml
+
+  # --- Grafana: unified observability UI ---
+  # Dashboards, Explore, and alerting for logs, metrics, and traces.
   grafana:
     image: grafana/grafana:11.0.0
     ports:
-      - '3003:3000'
+      - '3003:3000' # host 3003 to avoid clash with monolith on 3000
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: 'true'
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'      # local dev — skip login screen
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin       # anonymous users get admin access in dev
     volumes:
+      # Auto-provision datasources (Loki, Mimir, Tempo) on startup — no manual setup needed.
       - ./infra/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - grafana_data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana # persists dashboards and settings across restarts
     depends_on:
       - loki
       - mimir
+      - tempo
 
+  # --- Alloy: unified telemetry collector ---
+  # Replaces Promtail (logs) + Prometheus (metrics) + OTel Collector (traces)
+  # with a single binary. See infra/alloy/config.alloy for the pipeline config.
   alloy:
     image: grafana/alloy:v1.0.0
     ports:
-      - '12345:12345'
+      - '12345:12345' # Alloy UI — check scrape targets, pipeline health, errors
     volumes:
-      - ./infra/alloy/config.logs-only.alloy:/etc/alloy/config.alloy
-      - ./logs:/var/log/news-feed:ro
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy        # pipeline config (logs + metrics + traces)
+      - ./logs:/var/log/news-feed:ro                                # host log files mounted read-only
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki
       - mimir
+      - tempo
 
 volumes:
-  loki_data:
-  grafana_data:
-  mimir_data:
+  loki_data:    # Loki log data
+  grafana_data: # Grafana dashboards, settings, alert state
+  mimir_data:   # Mimir metrics TSDB blocks
+  tempo_data:   # Tempo trace blocks

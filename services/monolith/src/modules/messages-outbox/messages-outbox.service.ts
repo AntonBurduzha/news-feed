@@ -7,6 +7,7 @@ function mapMessageOutbox(row: MessageOutboxRow): MessageOutbox {
 		topic: row.topic,
 		payload: row.payload,
 		correlationId: row.correlation_id,
+		traceId: row.trace_id,
 	};
 }
 
