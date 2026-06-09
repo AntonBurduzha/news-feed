@@ -1,11 +1,13 @@
 // LOGS: tail host log files → push to Loki
 
 // Declare which log files to watch and tag each with a "service" label
+local.file_match "news_feed_logs" {
   path_targets = [
     { __path__ = "/var/log/news-feed/monolith.log",       service = "news-feed-monolith" },
     { __path__ = "/var/log/news-feed/auth-svc.log",       service = "auth-svc"           },
     { __path__ = "/var/log/news-feed/comments-svc.log",   service = "comments-svc"       },
     { __path__ = "/var/log/news-feed/outbox-relay.log",   service = "outbox-relay"       },
+    { __path__ = "/var/log/news-feed/dlq-redrive.log",   service = "dlq-redrive"         },
   ]
 }
 
@@ -42,14 +44,39 @@ loki.write "default" {
 }
 
 
-// METRICS: scrape /metrics → push to Mimir
+// METRICS: scrape /metrics push to Mimir
 // Poll each service's /metrics endpoint every 15 seconds.
 prometheus.scrape "news_feed_services" {
   targets = [
     { "__address__" = "host.docker.internal:3000", "service" = "news-feed-monolith" },
     { "__address__" = "host.docker.internal:3001", "service" = "comments-svc"       },
     { "__address__" = "host.docker.internal:3002", "service" = "auth-svc"           },
-    { "__address__" = "host.docker.internal:3010", "service" = "outbox-relay" },
+    { "__address__" = "host.docker.internal:3010", "service" = "outbox-relay"       },
+    { "__address__" = "host.docker.internal:3011", "service" = "dlq-redrive"        },
+  ]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "postgres" {
+  targets = [
+    { "__address__" = "host.docker.internal:9187", "service" = "postgres" },
+  ]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "mongodb" {
+  targets = [
+    { "__address__" = "host.docker.internal:9216", "service" = "mongodb" },
+  ]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "kafka" {
+  targets = [
+    { "__address__" = "host.docker.internal:9308", "service" = "kafka" },
   ]
   scrape_interval = "15s"
   forward_to      = [prometheus.remote_write.mimir.receiver]

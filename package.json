@@ -9,9 +9,9 @@
 		"services/shared/*"
 	],
 	"scripts": {
-		"dev:monolith": "npm --workspace services/monolith run dev",
-		"dev:comments": "npm --workspace services/comments-service run dev",
-		"dev:auth": "npm --workspace services/auth-service run dev",
+		"dev:monolith": "npm --workspace services/monolith run dev 2>&1 | tee logs/monolith.log",
+		"dev:comments": "npm --workspace services/comments-service run dev 2>&1 | tee logs/comments-svc.log",
+		"dev:auth": "npm --workspace services/auth-service run dev 2>&1 | tee logs/auth-svc.log",
 		"build": "npm run build --workspaces",
 		"typecheck": "npm run typecheck --workspaces",
 		"lint": "npm run lint --workspaces",
@@ -19,12 +19,12 @@
 		"start:monolith": "npm --workspace services/monolith run start",
 		"start:comments": "npm --workspace services/comments-service run start",
 		"start:auth": "npm --workspace services/auth-service run start",
-		"start:outbox-relay": "npm --workspace services/monolith run worker:outbox",
 		"migrate:postgres": "npm --workspace services/monolith run migrate:postgres",
 		"migrate:postgres:down": "npm --workspace services/monolith run migrate:postgres:down",
 		"migrate:postgres:create": "npm --workspace services/monolith run migrate:postgres:create",
 		"worker:fan-out": "npm --workspace services/monolith run worker:fan-out",
-		"worker:outbox": "npm --workspace services/monolith run worker:outbox",
-		"worker:outbox-cleaner": "npm --workspace services/monolith run worker:outbox-cleaner"
+		"worker:outbox": "npm --workspace services/monolith run worker:outbox 2>&1 | tee logs/outbox-relay.log",
+		"worker:outbox-cleaner": "npm --workspace services/monolith run worker:outbox-cleaner",
+		"worker:dlq-redrive": "npm --workspace services/monolith run worker:dlq-redrive 2>&1 | tee logs/dlq-redrive.log"
 	}
 }

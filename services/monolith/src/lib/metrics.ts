@@ -73,6 +73,12 @@ export const dlqMessagesTotal = new client.Counter({
 	labelNames: ['service', 'original_topic'] as const,
 });
 
+export const dlqMessagesRedrivenTotal = new client.Counter({
+	name: 'dlq_messages_redriven_total',
+	help: 'DLQ messages replayed to their original topic',
+	labelNames: ['service', 'original_topic'] as const,
+});
+
 // Postgres metrics
 export const pgPoolConnections = new client.Gauge({
 	name: 'pg_pool_connections',
@@ -98,10 +104,4 @@ export const kafkaConsumerProcessingDuration = new client.Histogram({
 	help: 'Time to process one Kafka message',
 	labelNames: ['topic', 'consumer_group', 'service'] as const,
 	buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 30],
-});
-
-export const kafkaConsumerLag = new client.Gauge({
-	name: 'kafka_consumer_lag',
-	help: 'Consumer group lag per topic partition',
-	labelNames: ['topic', 'consumer_group', 'partition', 'service'] as const,
 });

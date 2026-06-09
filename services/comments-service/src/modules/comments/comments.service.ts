@@ -60,10 +60,9 @@ class CommentsService {
 
 	async deleteCommentsByPostId(postId: string): Promise<number> {
 		const deletedCount = await commentsRepository.deleteByPostId(postId);
-		if (deletedCount === 0) {
-			throw new NotFoundError(`Comments for post id ${postId} were not found`);
+		if (deletedCount !== 0) {
+			commentsDeletedTotal.inc({ service: env.SERVICE_NAME }, deletedCount);
 		}
-		commentsDeletedTotal.inc({ service: env.SERVICE_NAME }, deletedCount);
 		return deletedCount;
 	}
 }

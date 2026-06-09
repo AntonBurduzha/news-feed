@@ -1,5 +1,6 @@
-import { CompressionTypes, type Producer } from 'kafkajs';
+import { CompressionTypes, type KafkaMessage as IncomingMessage, type Producer } from 'kafkajs';
 import { kafka } from '@/config/kafka';
+import { KafkaTopics } from '@/kafka/topics';
 import { logger } from '@/lib/logger';
 
 type KafkaMessage = {
@@ -9,11 +10,10 @@ type KafkaMessage = {
 	headers?: Record<string, string>;
 };
 
-type KafkaMessageWithDLQ = KafkaMessage & {
+type DLQMetadata = {
 	dlqReason: string;
 	originalTopic: string;
 	originalPartition: number;
-	failedAt: string;
 };
 
 class KafkaProducer {
@@ -33,10 +33,7 @@ class KafkaProducer {
 		logger.info('Kafka producer disconnected');
 	}
 
-	async sendMessage(
-		topic: string,
-		messages: KafkaMessage[] | KafkaMessageWithDLQ[],
-	): Promise<void> {
+	async sendMessage(topic: string, messages: KafkaMessage[]): Promise<void> {
 		await this.producer.send({
 			topic,
 			compression: CompressionTypes.GZIP,
@@ -52,6 +49,28 @@ class KafkaProducer {
 			},
 			'Kafka messages sent',
 		);
+	}
+
+	async sendToDLQ(original: IncomingMessage, meta: DLQMetadata): Promise<void> {
+		await this.producer.send({
+			topic: KafkaTopics.AppDLQ,
+			compression: CompressionTypes.GZIP,
+			messages: [
+				{
+					key: original.key ?? undefined,
+					value: original.value,
+					headers: {
+						...original.headers,
+						'x-dlq-reason': meta.dlqReason,
+						'x-original-topic': meta.originalTopic,
+						'x-original-partition': String(meta.originalPartition),
+						'x-failed-at': new Date().toISOString(),
+					},
+				},
+			],
+		});
+
+		logger.warn({ ...meta }, 'Message sent to DLQ');
 	}
 }
 

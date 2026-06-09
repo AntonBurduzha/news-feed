@@ -8,6 +8,7 @@ import { KafkaTopics } from '@/kafka/topics';
 import { dlqMessagesTotal } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
+import { withRetry } from '@/lib/retry';
 import { commentsService } from '@/modules/comments/comments.service';
 import { postsProjectionService } from '@/modules/posts-projection/posts-projection.service';
 
@@ -28,55 +29,47 @@ async function start(): Promise<void> {
 	await consumer.subscribeAndListen(
 		[KafkaTopics.PostDeletedV1, KafkaTopics.PostCreatedV1],
 		async ({ message, topic, partition }) => {
-			const { key, value } = message;
 			try {
-				const { postId, userId } = JSON.parse(value!.toString()) as {
-					postId: string;
-					userId: string;
-				};
-				switch (topic) {
-					case KafkaTopics.PostDeletedV1:
-						await postsProjectionService.upsertById({ _id: postId, deletedAt: new Date() });
-						logger.info(`Post projection marked as deleted for post id ${postId}`);
-						// eslint-disable-next-line no-case-declarations
-						const deletedCount = await commentsService.deleteCommentsByPostId(postId);
-						logger.info(
-							{ postId, deletedCommentCount: deletedCount, event: KafkaTopics.PostDeletedV1 },
-							'Projection deleted and comments purged',
-						);
-						break;
-					case KafkaTopics.PostCreatedV1:
-						await postsProjectionService.upsertById({ _id: postId, userId });
-						logger.info(
-							{ postId, userId, event: KafkaTopics.PostCreatedV1 },
-							'Projection upserted',
-						);
-						break;
-					default:
-						logger.error({ topic }, 'Unknown topic');
-						return;
-				}
+				await withRetry(async () => {
+					const { postId, userId } = JSON.parse(message.value!.toString()) as {
+						postId: string;
+						userId: string;
+					};
+					switch (topic) {
+						case KafkaTopics.PostDeletedV1:
+							await postsProjectionService.upsertById({ _id: postId, deletedAt: new Date() });
+							logger.info(`Post projection marked as deleted for post id ${postId}`);
+							// eslint-disable-next-line no-case-declarations
+							const deletedCount = await commentsService.deleteCommentsByPostId(postId);
+							logger.info(
+								{ postId, deletedCommentCount: deletedCount, event: KafkaTopics.PostDeletedV1 },
+								'Projection deleted and comments purged',
+							);
+							break;
+						case KafkaTopics.PostCreatedV1:
+							await postsProjectionService.upsertById({ _id: postId, userId });
+							logger.info(
+								{ postId, userId, event: KafkaTopics.PostCreatedV1 },
+								'Projection upserted',
+							);
+							break;
+						default:
+							logger.error({ topic }, 'Unknown topic');
+							return;
+					}
+				});
 			} catch (error) {
+				const dlqReason = normalizeError(error).message;
 				logger.error(
-					{
-						dlqReason: normalizeError(error).message,
-						originalTopic: topic,
-						originalPartition: partition,
-						failedAt: new Date().toISOString(),
-					},
-					`Error consuming ${KafkaTopics.PostDeletedV1} message, sending to DLQ`,
+					{ dlqReason, originalTopic: topic, originalPartition: partition },
+					'Processing failed after retries, sending to DLQ',
 				);
 				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
-				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
-					{
-						key: key!.toString(),
-						value: JSON.stringify(value),
-						dlqReason: normalizeError(error).message,
-						originalTopic: topic,
-						originalPartition: partition,
-						failedAt: new Date().toISOString(),
-					},
-				]);
+				await kafkaProducer.sendToDLQ(message, {
+					dlqReason,
+					originalTopic: topic,
+					originalPartition: partition,
+				});
 			}
 		},
 	);

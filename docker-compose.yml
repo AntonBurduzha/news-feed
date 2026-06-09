@@ -12,7 +12,14 @@ services:
       - '9092:9092'
     links:
       - zookeeper
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 9092 || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     environment:
+      KAFKA_BROKER_ID: 1
       KAFKA_ADVERTISED_HOST_NAME: kafka
       KAFKA_ADVERTISED_PORT: 9092
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -20,6 +27,18 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    command:
+      - '--kafka.server=kafka:9092'
+      - '--kafka.version=1.1.0'
+    ports:
+      - '9308:9308'
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
 
   postgres:
     image: postgres:15
@@ -32,6 +51,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@postgres:5432/${POSTGRES_DB_NAME}?sslmode=disable'
+    ports:
+      - '9187:9187'
+    depends_on:
+      - postgres
+
   mongodb:
     image: mongo:6.0
     environment:
@@ -42,6 +70,17 @@ services:
       - '27017:27017'
     volumes:
       - mongodb_data:/data/db
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40
+    command:
+      - '--collect-all'
+    environment:
+      MONGODB_URI: 'mongodb://${MONGO_DB_USER}:${MONGO_DB_PASSWORD}@mongodb:27017/admin?authSource=admin'
+    ports:
+      - '9216:9216'
+    depends_on:
+      - mongodb
 
   redis:
     image: redis:7-alpine

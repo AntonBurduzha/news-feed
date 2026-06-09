@@ -9,6 +9,7 @@
 		"worker:fan-out": "tsx --import ./src/lib/tracing.ts --watch workers/fan-out.ts",
 		"worker:outbox": "tsx --import ./src/lib/tracing.ts --watch workers/outbox-relay.ts",
 		"worker:outbox-cleaner": "tsx --import ./src/lib/tracing.ts --watch workers/outbox-cleaner.ts",
+		"worker:dlq-redrive": "tsx --import ./src/lib/tracing.ts --watch workers/dlq-redrive.ts",
 		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
 		"start": "node dist/src/index.js",
 		"migrate:postgres": "node-pg-migrate up -m ./src/db/postgres/migrations --tsx --tsconfig tsconfig.json",

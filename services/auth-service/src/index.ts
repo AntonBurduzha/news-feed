@@ -48,7 +48,7 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 	const disposables: Array<[string, () => Promise<unknown>]> = [['Redis', () => disconnectRedis()]];
 	for (const [label, close] of disposables) {
 		await close().catch(err => {
-			logger.error({ err: normalizeError(err) }, `Failed to disconnect ${label}`);
+			logger.error({ err: normalizeError(err) }, `Failed to disconnect ${label} during shutdown`);
 		});
 	}
 }

@@ -4,8 +4,10 @@ import { z } from 'zod';
 const envSchema = z.object({
 	NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 	PORT: z.coerce.number().int().positive().default(3000),
-	METRICS_PORT: z.coerce.number().int().positive().default(3010),
+	OUTBOX_RELAY_PORT: z.coerce.number().int().positive().default(3010),
 	OUTBOX_RELAY_SERVICE_NAME: z.string().min(1).default('outbox-relay'),
+	DLQ_REDRIVE_PORT: z.coerce.number().int().positive().default(3011),
+	DLQ_REDRIVE_SERVICE_NAME: z.string().min(1).default('dlq-redrive'),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 	SERVICE_NAME: z.string().min(1).default('news-feed-monolith'),
 	COMMENTS_SVC_URL: z.string().min(1).default('http://localhost:3001'),

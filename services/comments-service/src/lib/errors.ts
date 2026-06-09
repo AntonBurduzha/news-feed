@@ -36,3 +36,10 @@ export function normalizeError(error: unknown): Error {
 
 	return new Error(typeof error === 'string' ? error : 'Unknown error');
 }
+
+export function isRetryable(error: unknown): boolean {
+	if (error instanceof ValidationError) return false;
+	if (error instanceof NotFoundError) return false;
+	if (error instanceof SyntaxError) return false;
+	return true;
+}

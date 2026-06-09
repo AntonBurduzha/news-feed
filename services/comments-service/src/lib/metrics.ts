@@ -61,9 +61,3 @@ export const kafkaConsumerProcessingDuration = new client.Histogram({
 	labelNames: ['topic', 'consumer_group', 'service'] as const,
 	buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 30],
 });
-
-export const kafkaConsumerLag = new client.Gauge({
-	name: 'kafka_consumer_lag',
-	help: 'Consumer group lag per topic partition',
-	labelNames: ['topic', 'consumer_group', 'partition', 'service'] as const,
-});

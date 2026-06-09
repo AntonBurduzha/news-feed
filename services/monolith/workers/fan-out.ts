@@ -2,6 +2,7 @@ import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { dlqMessagesTotal } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
+import { withRetry } from '@/lib/retry';
 import { KafkaTopics } from '@/kafka/topics';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
@@ -48,33 +49,26 @@ async function run(): Promise<void> {
 		partitionIndex,
 	);
 	await consumer.connect();
+	await kafkaProducer.connect();
 	await consumer.subscribeAndListen(
 		KafkaTopics.PostFanOutV1,
 		async ({ message, topic, partition }) => {
-			const { key, value } = message;
 			try {
-				// TODO: Implement post-fan-out-consumer logic
+				await withRetry(async () => {
+					// TODO: Implement post-fan-out-consumer logic
+				});
 			} catch (error) {
+				const dlqReason = normalizeError(error).message;
 				logger.error(
-					{
-						dlqReason: normalizeError(error).message,
-						originalTopic: topic,
-						originalPartition: partition,
-						failedAt: new Date().toISOString(),
-					},
-					'Error consuming post fan-out message, sending to DLQ',
+					{ dlqReason, originalTopic: topic, originalPartition: partition },
+					'Processing failed after retries, sending to DLQ',
 				);
 				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
-				await kafkaProducer.sendMessage(KafkaTopics.AppDLQ, [
-					{
-						key: key!.toString(),
-						value: JSON.stringify(value),
-						dlqReason: normalizeError(error).message,
-						originalTopic: topic,
-						originalPartition: partition,
-						failedAt: new Date().toISOString(),
-					},
-				]);
+				await kafkaProducer.sendToDLQ(message, {
+					dlqReason,
+					originalTopic: topic,
+					originalPartition: partition,
+				});
 			}
 		},
 	);
@@ -83,6 +77,7 @@ async function run(): Promise<void> {
 		try {
 			logger.info({ followerId, signal }, 'Shutting down consumer');
 			await consumer.disconnect();
+			await kafkaProducer.disconnect();
 		} catch (error) {
 			logger.error(
 				{ err: normalizeError(error), followerId },

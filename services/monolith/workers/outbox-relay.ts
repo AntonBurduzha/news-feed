@@ -14,6 +14,7 @@ import { normalizeError } from '@/lib/errors';
 import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox.service';
 import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.constants';
 
+const log = logger.child({ service: env.OUTBOX_RELAY_SERVICE_NAME });
 let outboxRelayInterval: NodeJS.Timeout | null = null;
 const tracer = trace.getTracer('outbox-relay');
 
@@ -30,16 +31,16 @@ function startMetricsServer(port: number): http.Server {
 		});
 	});
 	server.listen(port, () => {
-		logger.info({ port }, 'Metrics server listening');
+		log.info({ port }, 'Metrics server listening');
 	});
 	return server;
 }
 
-const METRICS_PORT = Number(process.env.METRICS_PORT ?? 3010);
+const OUTBOX_RELAY_PORT = Number(process.env.OUTBOX_RELAY_PORT ?? 3010);
 
 async function run(): Promise<void> {
-	const metricsServer = startMetricsServer(METRICS_PORT);
-	logger.info('Starting outbox relay worker');
+	const metricsServer = startMetricsServer(OUTBOX_RELAY_PORT);
+	log.info('Starting outbox relay worker');
 	await kafkaProducer.connect();
 
 	outboxRelayInterval = setInterval(() => {
@@ -59,7 +60,7 @@ async function run(): Promise<void> {
 					if (pendingMessages.length === 0) {
 						return;
 					}
-					logger.info(
+					log.info(
 						{ pendingCount: pendingMessages.length },
 						'Found pending messages in outbox relay worker',
 					);
@@ -106,7 +107,7 @@ async function run(): Promise<void> {
 									service: env.OUTBOX_RELAY_SERVICE_NAME,
 									topic: message.topic,
 								});
-								logger.error(
+								log.error(
 									{ err: normalizeError(error), topic: message.topic },
 									'Failed to publish message to Kafka',
 								);
@@ -115,7 +116,7 @@ async function run(): Promise<void> {
 							}
 						});
 					}
-					logger.info({ publishedCount }, 'Published messages in outbox relay worker');
+					log.info({ publishedCount }, 'Published messages in outbox relay worker');
 					await messagesOutboxService.updateMessageStatus(
 						pendingMessages.map(m => m.id),
 						MessageOutboxStatus.Sent,
@@ -131,7 +132,7 @@ async function run(): Promise<void> {
 						code: SpanStatusCode.ERROR,
 						message: (error as Error).message,
 					});
-					logger.error(
+					log.error(
 						{ err: normalizeError(error) },
 						'Failed to find pending messages in outbox relay worker',
 					);
@@ -144,11 +145,11 @@ async function run(): Promise<void> {
 
 	const disconnectAndExit = async (signal?: string): Promise<void> => {
 		try {
-			logger.info('Shutting down outbox relay worker');
+			log.info('Shutting down outbox relay worker');
 			await kafkaProducer.disconnect();
 			metricsServer.close();
 		} catch (error) {
-			logger.error(
+			log.error(
 				{ err: normalizeError(error) },
 				'Failed to disconnect Kafka producer during shutdown outbox relay worker',
 			);
@@ -161,12 +162,12 @@ async function run(): Promise<void> {
 	};
 
 	process.on('unhandledRejection', error => {
-		logger.error({ err: normalizeError(error) }, 'Unhandled rejection in outbox relay worker');
+		log.error({ err: normalizeError(error) }, 'Unhandled rejection in outbox relay worker');
 		void disconnectAndExit();
 	});
 
 	process.on('uncaughtException', error => {
-		logger.error({ err: normalizeError(error) }, 'Uncaught exception in outbox relay worker');
+		log.error({ err: normalizeError(error) }, 'Uncaught exception in outbox relay worker');
 		void disconnectAndExit();
 	});
 
@@ -179,7 +180,7 @@ async function run(): Promise<void> {
 }
 
 void run().catch(error => {
-	logger.error({ err: normalizeError(error) }, 'Outbox relay worker failed to start');
+	log.error({ err: normalizeError(error) }, 'Outbox relay worker failed to start');
 	if (outboxRelayInterval) {
 		clearInterval(outboxRelayInterval);
 	}
