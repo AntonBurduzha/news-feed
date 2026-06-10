@@ -5,6 +5,7 @@ type RequestPayload = {
 	body?: unknown;
 	params?: unknown;
 	query?: unknown;
+	file?: unknown;
 };
 
 export function validate(schema: ZodType<RequestPayload>): RequestHandler {
@@ -14,6 +15,7 @@ export function validate(schema: ZodType<RequestPayload>): RequestHandler {
 				body: req.body as unknown,
 				params: req.params as unknown,
 				query: req.query as unknown,
+				file: req.file,
 			};
 			const parsed = await schema.parseAsync(payload);
 

@@ -32,3 +32,10 @@ export const deleteUser: RequestHandler = asyncHandler(async (req, res) => {
 	await userService.deleteUser(id);
 	res.status(httpStatus.NO_CONTENT).send();
 });
+
+export const uploadAvatar: RequestHandler = asyncHandler(async (req, res) => {
+	const { id } = req.params as { id: string };
+	const file = req.file as Express.Multer.File;
+	const avatarUrl = await userService.uploadAvatar(id, file.buffer);
+	res.json({ avatarUrl });
+});

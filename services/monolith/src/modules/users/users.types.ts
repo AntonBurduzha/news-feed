@@ -21,5 +21,4 @@ export type CreateUserInput = {
 export type UpdateUserInput = {
 	name: string;
 	email: string;
-	avatarUrl: string;
 };

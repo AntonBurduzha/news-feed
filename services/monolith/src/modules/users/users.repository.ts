@@ -23,9 +23,15 @@ class UserRepository {
 
 	async update(id: string, input: UpdateUserInput): Promise<UserRow | null> {
 		const query =
-			'UPDATE users SET name = $1, email = $2, avatar_url = $3 WHERE id = $4 RETURNING id, name, email, avatar_url, created_at;';
-		const { rows } = await db.query<UserRow>(query, [input.name, input.email, input.avatarUrl, id]);
+			'UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email, avatar_url, created_at;';
+		const { rows } = await db.query<UserRow>(query, [input.name, input.email, id]);
 		return rows[0] ?? null;
+	}
+
+	async updateAvatar(id: string, avatarUrl: string): Promise<string> {
+		const query = 'UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING avatar_url;';
+		const { rows } = await db.query<{ avatar_url: string }>(query, [avatarUrl, id]);
+		return rows[0].avatar_url;
 	}
 
 	async delete(id: string, client: PoolClient): Promise<boolean> {

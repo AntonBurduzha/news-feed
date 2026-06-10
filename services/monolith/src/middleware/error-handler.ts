@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import httpStatus from 'http-status';
 import { ZodError } from 'zod';
+import { MulterError } from 'multer';
 import { AppError, NotFoundError, ValidationError } from '@/lib/errors';
 
 export const notFoundHandler: RequestHandler = (req, _res, next) => {
@@ -26,6 +27,14 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
 			error: error.message,
 			...(error.details ? { details: error.details } : {}),
 		});
+	}
+
+	if (error instanceof MulterError) {
+		const status =
+			error.code === 'LIMIT_FILE_SIZE'
+				? httpStatus.REQUEST_ENTITY_TOO_LARGE
+				: httpStatus.BAD_REQUEST;
+		return res.status(status).json({ error: error.message });
 	}
 
 	req.log.error({ err: error }, 'Unhandled request error');

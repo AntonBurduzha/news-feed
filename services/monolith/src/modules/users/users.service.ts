@@ -1,4 +1,8 @@
+import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 import { withTransaction } from '@/db/postgres';
+import { ValidationError } from '@/lib/errors';
+import s3Service from '@/lib/s3';
 import { NotFoundError } from '@/lib/errors';
 // import { KafkaTopics } from '@/kafka/topics';
 import { logger } from '@/lib/logger';
@@ -81,6 +85,38 @@ class UserService {
 				logger.info({ postIds }, 'Posts deleted message fanned out via Kafka');
 			}
 		});
+	}
+
+	async uploadAvatar(id: string, input: Buffer): Promise<string> {
+		const user = await this.userRepository.findById(id);
+		if (!user) {
+			throw new NotFoundError(`User ${id} was not found`);
+		}
+
+		let buffer: Buffer;
+		try {
+			buffer = await sharp(input, { limitInputPixels: 25_000_000 })
+				.rotate()
+				.resize(256, 256, { fit: 'cover', position: 'attention' })
+				.webp({ quality: 82 })
+				.toBuffer();
+		} catch {
+			throw new ValidationError('File is not a valid image');
+		}
+		const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 16);
+		const key = `avatars/${id}/${hash}.webp`;
+		const avatarUrl = await s3Service.putObject({ key, body: buffer, contentType: 'image/webp' });
+		await this.userRepository.updateAvatar(id, avatarUrl);
+		// TODO: Send to Kafka to remove old avatar from S3
+		if (user.avatar_url) {
+			try {
+				const previousKey = new URL(user.avatar_url).pathname.slice(1);
+				await s3Service.deleteObject(previousKey);
+			} catch {
+				logger.error({ avatarUrl: user.avatar_url }, 'Failed to delete previous avatar');
+			}
+		}
+		return avatarUrl;
 	}
 }
 
