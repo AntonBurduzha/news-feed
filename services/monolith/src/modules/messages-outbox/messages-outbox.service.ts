@@ -27,7 +27,7 @@ class MessagesOutboxService {
 		return this.repository.updateMessageStatus(ids, status);
 	}
 
-	async cleanUpSentMessages(): Promise<void> {
+	async cleanUpSentMessages(): Promise<number> {
 		return this.repository.cleanUpSentMessages();
 	}
 }

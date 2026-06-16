@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { withTransaction } from '@/db/postgres';
 import { ValidationError } from '@/lib/errors';
 import s3Service from '@/lib/s3';
@@ -12,6 +13,8 @@ import { postService } from '@/modules/posts/posts.service';
 import { usersRepository } from './users.repository';
 import type { CreateUserInput, UpdateUserInput, User, UserRow } from './users.types';
 import type { PostsPort } from './users.ports';
+
+const tracer = trace.getTracer('users-service');
 
 function mapUser(row: UserRow): User {
 	return {
@@ -34,11 +37,23 @@ class UserService {
 	}
 
 	async createUser(input: CreateUserInput): Promise<User> {
-		const user = await this.userRepository.create(input);
-		if (!user) {
-			throw new Error('Database did not return the created user');
-		}
-		return mapUser(user);
+		const span = tracer.startSpan('users.createUser');
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const user = await this.userRepository.create(input);
+				if (!user) {
+					throw new Error('Database did not return the created user');
+				}
+				span.setAttribute('user.id', user.id);
+				return mapUser(user);
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 
 	async getUsers(): Promise<User[]> {
@@ -55,67 +70,101 @@ class UserService {
 	}
 
 	async updateUser(id: string, input: UpdateUserInput): Promise<User> {
-		const updatedUser = await this.userRepository.update(id, input);
-		if (!updatedUser) {
-			throw new NotFoundError(`User ${id} was not found`);
-		}
-		return mapUser(updatedUser);
+		const span = tracer.startSpan('users.updateUser', {
+			attributes: { 'user.id': id },
+		});
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const updatedUser = await this.userRepository.update(id, input);
+				if (!updatedUser) {
+					throw new NotFoundError(`User ${id} was not found`);
+				}
+				return mapUser(updatedUser);
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 
 	async deleteUser(id: string): Promise<void> {
-		const posts = await this.postsPort.getPosts({ userId: id });
-		const postIds = posts.posts.map(post => post.id);
-		//const correlationId = requestContext.getStore()?.correlationId ?? '';
-		// const message = {
-		// 	topic: KafkaTopics.DeleteComments,
-		// 	payload: {
-		// 		key: id,
-		// 		value: JSON.stringify({ postIds }),
-		// 	},
-		// 	correlationId,
-		// };
-		// TODO: send delete user message to Kafka to delete all posts and comments of user
-		await withTransaction(async client => {
-			const userIsDeleted = await this.userRepository.delete(id, client);
-			if (!userIsDeleted) {
-				throw new NotFoundError(`User ${id} was not found`);
-			}
-			if (postIds.length > 0) {
-				logger.info({ postIds }, 'Posts deleted');
+		const span = tracer.startSpan('users.deleteUser', {
+			attributes: { 'user.id': id },
+		});
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const posts = await this.postsPort.getPosts({ userId: id });
+				const postIds = posts.posts.map(post => post.id);
+				await withTransaction(async client => {
+					const userIsDeleted = await this.userRepository.delete(id, client);
+					if (!userIsDeleted) {
+						throw new NotFoundError(`User ${id} was not found`);
+					}
+					if (postIds.length > 0) {
+						span.setAttribute('posts.deleted_count', postIds.length);
+						logger.info({ postIds }, 'Posts deleted');
+					}
+				});
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
 			}
 		});
 	}
 
 	async uploadAvatar(id: string, input: Buffer): Promise<string> {
-		const user = await this.userRepository.findById(id);
-		if (!user) {
-			throw new NotFoundError(`User ${id} was not found`);
-		}
-
-		let buffer: Buffer;
-		try {
-			buffer = await sharp(input, { limitInputPixels: 25_000_000 })
-				.rotate()
-				.resize(256, 256, { fit: 'cover', position: 'attention' })
-				.webp({ quality: 82 })
-				.toBuffer();
-		} catch {
-			throw new ValidationError('File is not a valid image');
-		}
-		const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 16);
-		const key = `avatars/${id}/${hash}.webp`;
-		const avatarUrl = await s3Service.putObject({ key, body: buffer, contentType: 'image/webp' });
-		await this.userRepository.updateAvatar(id, avatarUrl);
-		// TODO: Send to Kafka to remove old avatar from S3
-		if (user.avatar_url) {
+		const span = tracer.startSpan('users.uploadAvatar', {
+			attributes: { 'user.id': id },
+		});
+		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const previousKey = new URL(user.avatar_url).pathname.slice(1);
-				await s3Service.deleteObject(previousKey);
-			} catch {
-				logger.error({ avatarUrl: user.avatar_url }, 'Failed to delete previous avatar');
+				const user = await this.userRepository.findById(id);
+				if (!user) {
+					throw new NotFoundError(`User ${id} was not found`);
+				}
+
+				let buffer: Buffer;
+				try {
+					buffer = await sharp(input, { limitInputPixels: 25_000_000 })
+						.rotate()
+						.resize(256, 256, { fit: 'cover', position: 'attention' })
+						.webp({ quality: 82 })
+						.toBuffer();
+				} catch {
+					throw new ValidationError('File is not a valid image');
+				}
+				const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 16);
+				const key = `avatars/${id}/${hash}.webp`;
+				const avatarUrl = await s3Service.putObject({
+					key,
+					body: buffer,
+					contentType: 'image/webp',
+				});
+				span.setAttribute('user.avatar_url', avatarUrl);
+				await this.userRepository.updateAvatar(id, avatarUrl);
+				if (user.avatar_url) {
+					try {
+						const previousKey = new URL(user.avatar_url).pathname.slice(1);
+						await s3Service.deleteObject(previousKey);
+					} catch {
+						logger.error({ avatarUrl: user.avatar_url }, 'Failed to delete previous avatar');
+					}
+				}
+				return avatarUrl;
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
 			}
-		}
-		return avatarUrl;
+		});
 	}
 }
 

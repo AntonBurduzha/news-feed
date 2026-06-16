@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { connectMongo, disconnectMongo, startMongoPoolMetrics } from '@/db/mongo';
@@ -20,6 +21,8 @@ const consumer = new KafkaConsumer(
 	'comments-svc-posts-projection',
 );
 
+const projectionTracer = trace.getTracer('comments-projection');
+
 async function start(): Promise<void> {
 	await connectMongo();
 	startMongoPoolMetrics();
@@ -35,31 +38,56 @@ async function start(): Promise<void> {
 						postId: string;
 						userId: string;
 					};
-					switch (topic) {
-						case KafkaTopics.PostDeletedV1:
-							await postsProjectionService.upsertById({ _id: postId, deletedAt: new Date() });
-							logger.info(
-								{ topic, postId, event: KafkaTopics.PostDeletedV1 },
-								'Kafka consumed message',
-							);
-							// eslint-disable-next-line no-case-declarations
-							const deletedCount = await commentsService.deleteCommentsByPostId(postId);
-							logger.info(
-								{ postId, deletedCommentCount: deletedCount, event: KafkaTopics.PostDeletedV1 },
-								'Projection deleted and comments purged',
-							);
-							break;
-						case KafkaTopics.PostCreatedV1:
-							await postsProjectionService.upsertById({ _id: postId, userId });
-							logger.info(
-								{ postId, userId, event: KafkaTopics.PostCreatedV1 },
-								'Projection upserted',
-							);
-							break;
-						default:
-							logger.error({ topic }, 'Unknown topic');
-							return;
-					}
+					const projectionSpan = projectionTracer.startSpan(`projection.${topic}`, {
+						attributes: { 'post.id': postId, 'kafka.topic': topic },
+					});
+					await context.with(trace.setSpan(context.active(), projectionSpan), async () => {
+						try {
+							switch (topic) {
+								case KafkaTopics.PostDeletedV1: {
+									await postsProjectionService.upsertById({
+										_id: postId,
+										deletedAt: new Date(),
+									});
+									logger.info(
+										{ topic, postId, event: KafkaTopics.PostDeletedV1 },
+										'Kafka consumed message',
+									);
+									const deletedCount =
+										await commentsService.deleteCommentsByPostId(postId);
+									logger.info(
+										{
+											postId,
+											deletedCommentCount: deletedCount,
+											event: KafkaTopics.PostDeletedV1,
+										},
+										'Projection deleted and comments purged',
+									);
+									break;
+								}
+								case KafkaTopics.PostCreatedV1: {
+									await postsProjectionService.upsertById({ _id: postId, userId });
+									logger.info(
+										{ postId, userId, event: KafkaTopics.PostCreatedV1 },
+										'Projection upserted',
+									);
+									break;
+								}
+								default:
+									logger.error({ topic }, 'Unknown topic');
+									return;
+							}
+						} catch (error) {
+							projectionSpan.recordException(error as Error);
+							projectionSpan.setStatus({
+								code: SpanStatusCode.ERROR,
+								message: (error as Error).message,
+							});
+							throw error;
+						} finally {
+							projectionSpan.end();
+						}
+					});
 				});
 			} catch (error) {
 				const dlqReason = normalizeError(error).message;

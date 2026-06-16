@@ -205,11 +205,25 @@ class PostService {
 	}
 
 	async updatePost(id: string, input: UpdatePostInput): Promise<Post> {
-		const updatedPost = await this.postRepository.update(id, input);
-		if (!updatedPost) {
-			throw new NotFoundError(`Post ${id} was not found`);
-		}
-		return mapPost(updatedPost);
+		const tracer = trace.getTracer('posts-service');
+		const span = tracer.startSpan('posts.updatePost', {
+			attributes: { 'post.id': id },
+		});
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const updatedPost = await this.postRepository.update(id, input);
+				if (!updatedPost) {
+					throw new NotFoundError(`Post ${id} was not found`);
+				}
+				return mapPost(updatedPost);
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 
 	async deletePost(id: string): Promise<void> {

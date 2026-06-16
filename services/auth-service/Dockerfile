@@ -24,4 +24,4 @@ WORKDIR /app/services/auth-service
 
 EXPOSE 3002
 
-CMD ["npx", "tsx", "src/index.ts"]
+CMD ["npx", "tsx", "--import", "./src/lib/tracing.ts", "src/index.ts"]

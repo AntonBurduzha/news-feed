@@ -35,10 +35,11 @@ class MessagesOutboxRepository {
 		]);
 	}
 
-	async cleanUpSentMessages(): Promise<void> {
-		await db.query(
+	async cleanUpSentMessages(): Promise<number> {
+		const result = await db.query(
 			"DELETE FROM messages_outbox WHERE status = 'sent' AND sent_at < NOW() - INTERVAL '1 hour';",
 		);
+		return result.rowCount ?? 0;
 	}
 }
 

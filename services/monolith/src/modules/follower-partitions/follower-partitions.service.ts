@@ -1,8 +1,11 @@
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 import { kafkaAdmin } from '@/kafka/admin';
 import { KafkaTopics } from '@/kafka/topics';
 import { followerPartitionsRepository } from './follower-partitions.repository';
+
+const tracer = trace.getTracer('follower-partitions');
 
 class FollowerPartitionsService {
 	private readonly repository;
@@ -17,34 +20,42 @@ class FollowerPartitionsService {
 	}
 
 	async reconcilePartitions(): Promise<void> {
-		try {
-			const followerIds = await this.repository.findFollowerIdsWithoutPartition();
+		const span = tracer.startSpan('follower-partitions.reconcile');
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const followerIds = await this.repository.findFollowerIdsWithoutPartition();
 
-			if (followerIds.length === 0) {
-				logger.info('Partition reconciliation complete — all followers have partitions');
-				return;
-			}
-
-			logger.info(
-				{ count: followerIds.length, followerIds },
-				'Found followers without partition assignments — reconciling',
-			);
-
-			for (const followerId of followerIds) {
-				try {
-					await this.getOrAssignPartition(followerId);
-				} catch (error) {
-					logger.error(
-						{ err: normalizeError(error), followerId },
-						'Failed to reconcile partition for follower — will retry on next startup',
-					);
+				if (followerIds.length === 0) {
+					logger.info('Partition reconciliation complete — all followers have partitions');
+					return;
 				}
+
+				span.setAttribute('followers.missing_partition_count', followerIds.length);
+				logger.info(
+					{ count: followerIds.length, followerIds },
+					'Found followers without partition assignments — reconciling',
+				);
+
+				for (const followerId of followerIds) {
+					try {
+						await this.getOrAssignPartition(followerId);
+					} catch (error) {
+						logger.error(
+							{ err: normalizeError(error), followerId },
+							'Failed to reconcile partition for follower — will retry on next startup',
+						);
+					}
+				}
+				logger.info('Partition reconciliation complete');
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				logger.error({ err: normalizeError(error) }, 'Partition reconciliation failed');
+				throw error;
+			} finally {
+				span.end();
 			}
-			logger.info('Partition reconciliation complete');
-		} catch (error) {
-			logger.error({ err: normalizeError(error) }, 'Partition reconciliation failed');
-			throw error;
-		}
+		});
 	}
 
 	async getOrAssignPartition(followerId: string): Promise<number> {

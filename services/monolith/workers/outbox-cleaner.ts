@@ -1,4 +1,5 @@
 import cron, { ScheduledTask } from 'node-cron';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox.service';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -8,15 +9,25 @@ let task: ScheduledTask | null = null;
 let shuttingDown = false;
 let activeCleanup: Promise<void> | null = null;
 
+const tracer = trace.getTracer('outbox-cleaner');
+
 async function runCleanup(): Promise<void> {
 	if (shuttingDown) return;
 
-	try {
-		await messagesOutboxService.cleanUpSentMessages();
-		logger.debug('Outbox cleanup completed');
-	} catch (error) {
-		logger.error({ err: normalizeError(error) }, 'Outbox cleanup failed');
-	}
+	const span = tracer.startSpan('outbox-cleaner.run');
+	await context.with(trace.setSpan(context.active(), span), async () => {
+		try {
+			const deletedCount = await messagesOutboxService.cleanUpSentMessages();
+			span.setAttribute('outbox.deleted_count', deletedCount);
+			logger.debug({ deletedCount }, 'Outbox cleanup completed');
+		} catch (error) {
+			span.recordException(error as Error);
+			span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+			logger.error({ err: normalizeError(error) }, 'Outbox cleanup failed');
+		} finally {
+			span.end();
+		}
+	});
 }
 
 async function run(): Promise<void> {

@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { trace } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import client from 'prom-client';
 
 export type UserContext = {
@@ -12,7 +12,6 @@ export type UserContext = {
 export interface AuthClient {
 	verify(bearer: string): Promise<UserContext>;
 	middleware(opts?: { optional?: boolean }): RequestHandler;
-	//redis: RedisClientType;
 	disconnect(): Promise<void>;
 }
 
@@ -42,45 +41,60 @@ export function createAuthClient(cfg: {
 	const jwks = createRemoteJWKSet(new URL(cfg.jwksUrl));
 	const redisClient: RedisClientType = createClient({ url: cfg.redisUrl });
 	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
+	const tracer = trace.getTracer('auth-client');
+
 	redisClient.on('error', err => {
 		logError({ err }, 'Redis connection error');
 	});
 	void redisClient.connect();
 
 	async function verify(bearer: string): Promise<UserContext> {
-		const token = bearer.replace(/^Bearer\s+/i, '');
-		const span = trace.getActiveSpan();
-		try {
-			const cached = await redisClient.get(`auth:${token}`);
-			if (cached) {
-				span?.addEvent('jwks.cache_hit');
-				redisCacheHitsTotal.inc({ operation: 'verify', service: cfg.audience });
-				return JSON.parse(cached) as UserContext;
+		const span = tracer.startSpan('auth-client.verify');
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const token = bearer.replace(/^Bearer\s+/i, '');
+				try {
+					const cached = await redisClient.get(`auth:${token}`);
+					if (cached) {
+						span.addEvent('jwks.cache_hit');
+						redisCacheHitsTotal.inc({ operation: 'verify', service: cfg.audience });
+						const ctx = JSON.parse(cached) as UserContext;
+						span.setAttribute('user.id', ctx.userId);
+						span.setAttribute('cache.hit', true);
+						return ctx;
+					}
+				} catch {
+					// Redis down, continue without caching
+				}
+				span.addEvent('jwks.cache_miss', { jwksUrl: cfg.jwksUrl });
+				redisCacheMissesTotal.inc({ operation: 'verify', service: cfg.audience });
+				span.setAttribute('cache.hit', false);
+				const { payload } = await jwtVerify(token, jwks, {
+					audience: cfg.audience,
+					issuer: cfg.issuer,
+				});
+				const ctx: UserContext = {
+					userId: payload.sub!,
+					tokenExp: payload.exp!,
+				};
+				span.setAttribute('user.id', ctx.userId);
+				try {
+					const ttl = Math.max(0, Math.min(60, ctx.tokenExp - Math.floor(Date.now() / 1000)));
+					if (ttl > 0) {
+						await redisClient.set(`auth:${token}`, JSON.stringify(ctx), { EX: ttl });
+					}
+				} catch {
+					// Redis down, continue without caching
+				}
+				return ctx;
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
 			}
-		} catch {
-			// Redis down, continue without caching
-		}
-		span?.addEvent('jwks.cache_miss', { jwksUrl: cfg.jwksUrl });
-		redisCacheMissesTotal.inc({ operation: 'verify', service: cfg.audience });
-		const { payload } = await jwtVerify(token, jwks, {
-			audience: cfg.audience,
-			issuer: cfg.issuer,
 		});
-		const ctx: UserContext = {
-			userId: payload.sub!,
-			tokenExp: payload.exp!,
-		};
-		try {
-			// INFO: Cache result for 60 seconds or until token expires, which is shorter
-			const ttl = Math.max(0, Math.min(60, ctx.tokenExp - Math.floor(Date.now() / 1000)));
-			if (ttl > 0) {
-				await redisClient.set(`auth:${token}`, JSON.stringify(ctx), { EX: ttl });
-			}
-		} catch {
-			// Redis down, continue without caching
-		}
-
-		return ctx;
 	}
 
 	const middleware: AuthClient['middleware'] =

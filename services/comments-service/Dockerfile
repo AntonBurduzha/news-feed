@@ -26,4 +26,4 @@ WORKDIR /app/services/comments-service
 
 EXPOSE 3001
 
-CMD ["npx", "tsx", "src/index.ts"]
+CMD ["npx", "tsx", "--import", "./src/lib/tracing.ts", "src/index.ts"]

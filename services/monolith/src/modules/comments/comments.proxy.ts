@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from 'express';
+import { trace } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { requestContext } from '@/middleware/context';
 
@@ -7,6 +8,7 @@ const router = Router();
 const proxy: RequestHandler = async (req, res, next) => {
 	const correlationId = requestContext.getStore()?.correlationId ?? '';
 	const upstream = `${env.COMMENTS_SVC_URL}${req.originalUrl}`;
+	trace.getActiveSpan()?.setAttribute('proxy.upstream', upstream);
 	try {
 		const response = await fetch(upstream, {
 			method: req.method,

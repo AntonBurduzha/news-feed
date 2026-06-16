@@ -1,3 +1,4 @@
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { dlqMessagesTotal } from '@/lib/metrics';
@@ -7,6 +8,8 @@ import { KafkaTopics } from '@/kafka/topics';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
 import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
+
+const tracer = trace.getTracer('fan-out');
 
 function parseArgs(): { followerId: string } {
 	const args = process.argv.slice(2);
@@ -53,19 +56,36 @@ async function run(): Promise<void> {
 	await consumer.subscribeAndListen(
 		KafkaTopics.PostFanOutV1,
 		async ({ message, topic, partition }) => {
-			try {
-				await withRetry(async () => {
-					// TODO: Implement post-fan-out-consumer logic
-				});
-			} catch (error) {
-				const dlqReason = normalizeError(error).message;
-				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
-				await kafkaProducer.sendToDLQ(message, {
-					dlqReason,
-					originalTopic: topic,
-					originalPartition: partition,
-				});
-			}
+			const span = tracer.startSpan('fan-out.process', {
+				attributes: {
+					'follower.id': followerId,
+					'kafka.topic': topic,
+					'kafka.partition': partition,
+				},
+			});
+			await context.with(trace.setSpan(context.active(), span), async () => {
+				try {
+					await withRetry(async () => {
+						// TODO: Implement post-fan-out-consumer logic
+						void message;
+					});
+				} catch (error) {
+					span.recordException(error as Error);
+					span.setStatus({
+						code: SpanStatusCode.ERROR,
+						message: (error as Error).message,
+					});
+					const dlqReason = normalizeError(error).message;
+					dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
+					await kafkaProducer.sendToDLQ(message, {
+						dlqReason,
+						originalTopic: topic,
+						originalPartition: partition,
+					});
+				} finally {
+					span.end();
+				}
+			});
 		},
 	);
 
