@@ -9,6 +9,10 @@ const envSchema = z.object({
 	DLQ_REDRIVE_PORT: z.coerce.number().int().positive().default(3011),
 	DLQ_REDRIVE_SERVICE_NAME: z.string().min(1).default('dlq-redrive'),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+	LOG_HTTP_INFRA: z
+		.enum(['true', 'false'])
+		.default('false')
+		.transform(v => v === 'true'),
 	SERVICE_NAME: z.string().min(1).default('news-feed-monolith'),
 	COMMENTS_SVC_URL: z.string().min(1).default('http://localhost:3001'),
 	POSTGRES_DB_HOST: z.string().min(1),

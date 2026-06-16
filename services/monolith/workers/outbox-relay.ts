@@ -60,10 +60,7 @@ async function run(): Promise<void> {
 					if (pendingMessages.length === 0) {
 						return;
 					}
-					log.info(
-						{ pendingCount: pendingMessages.length },
-						'Found pending messages in outbox relay worker',
-					);
+					log.debug({ pendingCount: pendingMessages.length }, 'Outbox relay batch started');
 					let publishedCount = 0;
 					for (const message of pendingMessages) {
 						const remoteContext = message.traceId
@@ -116,7 +113,7 @@ async function run(): Promise<void> {
 							}
 						});
 					}
-					log.info({ publishedCount }, 'Published messages in outbox relay worker');
+					log.debug({ publishedCount }, 'Outbox batch published');
 					await messagesOutboxService.updateMessageStatus(
 						pendingMessages.map(m => m.id),
 						MessageOutboxStatus.Sent,
@@ -132,10 +129,7 @@ async function run(): Promise<void> {
 						code: SpanStatusCode.ERROR,
 						message: (error as Error).message,
 					});
-					log.error(
-						{ err: normalizeError(error) },
-						'Failed to find pending messages in outbox relay worker',
-					);
+					log.error({ err: normalizeError(error) }, 'Outbox relay batch failed');
 				} finally {
 					batchSpan.end();
 				}
@@ -149,10 +143,7 @@ async function run(): Promise<void> {
 			await kafkaProducer.disconnect();
 			metricsServer.close();
 		} catch (error) {
-			log.error(
-				{ err: normalizeError(error) },
-				'Failed to disconnect Kafka producer during shutdown outbox relay worker',
-			);
+			log.error({ err: normalizeError(error) }, 'Failed to disconnect Kafka producer');
 			process.exitCode = 1;
 		}
 

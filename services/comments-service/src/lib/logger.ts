@@ -19,6 +19,8 @@ type SerializedHttpRes = {
 	correlationId?: string;
 };
 
+const INFRA_PATHS = new Set(['/metrics', '/healthz', '/readyz']);
+
 function slimAccessReqSerializer(req: SerializedHttpReq) {
 	return {
 		id: req.id,
@@ -35,9 +37,12 @@ function slimAccessResSerializer(res: SerializedHttpRes) {
 }
 
 function getTraceLogFields(): { traceId?: string; spanId?: string } {
-	const span = trace.getActiveSpan();
-	const spanContext = span?.spanContext();
-	if (!spanContext) {
+	const spanContext = trace.getActiveSpan()?.spanContext();
+	if (
+		spanContext == null ||
+		spanContext.traceId === '00000000000000000000000000000000' ||
+		spanContext.spanId === '0000000000000000'
+	) {
 		return {};
 	}
 	return {
@@ -46,36 +51,37 @@ function getTraceLogFields(): { traceId?: string; spanId?: string } {
 	};
 }
 
+const baseOptions = {
+	level: env.LOG_LEVEL,
+	base: {
+		service: env.SERVICE_NAME,
+	},
+	mixin: () => ({
+		correlationId: requestContext.getStore()?.correlationId,
+		...getTraceLogFields(),
+	}),
+	formatters: {
+		level(label: string) {
+			return { level: label };
+		},
+	},
+	redact: {
+		paths: [
+			'req.headers.authorization',
+			'req.headers.cookie',
+			'*.password',
+			'*.token',
+			'*.accessToken',
+			'*.refreshToken',
+		],
+		censor: '[REDACTED]',
+	},
+};
+
 const loggerOptions = env.isProduction
-	? {
-			level: env.LOG_LEVEL,
-			base: {
-				service: env.SERVICE_NAME,
-			},
-			mixin: () => ({
-				correlationId: requestContext.getStore()?.correlationId,
-				...getTraceLogFields(),
-			}),
-			formatters: {
-				level(label: string) {
-					return { level: label };
-				},
-			},
-		}
+	? baseOptions
 	: {
-			level: env.LOG_LEVEL,
-			base: {
-				service: env.SERVICE_NAME,
-			},
-			mixin: () => ({
-				correlationId: requestContext.getStore()?.correlationId,
-				...getTraceLogFields(),
-			}),
-			formatters: {
-				level(label: string) {
-					return { level: label };
-				},
-			},
+			...baseOptions,
 			transport: {
 				target: 'pino-pretty',
 				options: {
@@ -94,6 +100,14 @@ export const httpLogger = pinoHttp({
 	serializers: {
 		req: slimAccessReqSerializer,
 		res: slimAccessResSerializer,
+	},
+	autoLogging: {
+		ignore: req => !env.LOG_HTTP_INFRA && INFRA_PATHS.has((req.url ?? '').split('?')[0]),
+	},
+	customLogLevel: (_req, res, err) => {
+		if (err || res.statusCode >= 500) return 'error';
+		if (res.statusCode >= 400) return 'warn';
+		return 'info';
 	},
 	genReqId: (req: IncomingMessage, res: ServerResponse) => {
 		const existingId = req.headers['x-request-id'];

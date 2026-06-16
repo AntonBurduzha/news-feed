@@ -88,16 +88,11 @@ class PostService {
 					let outboxMessageCount = 0;
 					await this.messagesOutboxRepository.create(postCreatedMsg, client);
 					outboxMessageCount += 1;
-					logger.info({ postId: mappedPost.id }, 'Post created message fanned out via Kafka');
 					const followerIds = await this.followsRepository.findFollowersByFollowingId(
 						mappedPost.userId,
 					);
 					span.setAttribute('follower.count', followerIds.length);
 					if (followerIds.length === 0) {
-						logger.info(
-							{ postId: mappedPost.id, userId: mappedPost.userId },
-							'Post author has no followers — skipping Kafka fan-out',
-						);
 						return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
 					}
 					const followersMessages = await this.buildFollowerMessages(
@@ -107,11 +102,7 @@ class PostService {
 						traceId,
 					);
 					if (followersMessages.length === 0) {
-						logger.warn(
-							{ postId: mappedPost.id, userId: mappedPost.userId },
-							'No followers have valid partition assignments — skipping Kafka fan-out',
-						);
-						return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
+						return { mappedPost, outboxMessageCount, followerCount: followerIds.length, fanOutMessageCount: 0 };
 					}
 
 					for (const msg of followersMessages) {
@@ -167,7 +158,7 @@ class PostService {
 		return messagesWithPartitions
 			.filter(({ followerId, partition }) => {
 				if (partition === null) {
-					logger.warn(
+					logger.debug(
 						{ followerId, postId: post.id },
 						'Follower has no dedicated partition — skipping delivery for this follower',
 					);

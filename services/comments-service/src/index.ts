@@ -38,7 +38,10 @@ async function start(): Promise<void> {
 					switch (topic) {
 						case KafkaTopics.PostDeletedV1:
 							await postsProjectionService.upsertById({ _id: postId, deletedAt: new Date() });
-							logger.info(`Post projection marked as deleted for post id ${postId}`);
+							logger.info(
+								{ topic, postId, event: KafkaTopics.PostDeletedV1 },
+								'Kafka consumed message',
+							);
 							// eslint-disable-next-line no-case-declarations
 							const deletedCount = await commentsService.deleteCommentsByPostId(postId);
 							logger.info(
@@ -60,10 +63,6 @@ async function start(): Promise<void> {
 				});
 			} catch (error) {
 				const dlqReason = normalizeError(error).message;
-				logger.error(
-					{ dlqReason, originalTopic: topic, originalPartition: partition },
-					'Processing failed after retries, sending to DLQ',
-				);
 				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
 				await kafkaProducer.sendToDLQ(message, {
 					dlqReason,

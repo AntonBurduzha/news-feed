@@ -43,11 +43,10 @@ class KafkaProducer {
 		logger.info(
 			{
 				topic,
-				messages,
 				messageCount: messages.length,
 				partitions: messages.map(m => m.partition).filter(p => p !== undefined),
 			},
-			'Kafka messages sent',
+			'Kafka publish message',
 		);
 	}
 
@@ -70,7 +69,15 @@ class KafkaProducer {
 			],
 		});
 
-		logger.warn({ ...meta }, 'Message sent to DLQ');
+		logger.warn(
+			{
+				topic: KafkaTopics.AppDLQ,
+				dlqReason: meta.dlqReason,
+				originalTopic: meta.originalTopic,
+				originalPartition: meta.originalPartition,
+			},
+			'Kafka publish message',
+		);
 	}
 }
 

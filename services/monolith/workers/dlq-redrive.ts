@@ -73,7 +73,10 @@ async function run(): Promise<void> {
 					service: env.DLQ_REDRIVE_SERVICE_NAME,
 					original_topic: originalTopic,
 				});
-				log.info({ originalTopic, key: message.key?.toString() }, 'Redriven DLQ message');
+				log.info(
+					{ topic: originalTopic, redriven: true, key: message.key?.toString() },
+					'Kafka publish message',
+				);
 			} catch (error) {
 				redriveSpan.recordException(error as Error);
 				redriveSpan.setStatus({
@@ -98,10 +101,7 @@ async function run(): Promise<void> {
 			await kafkaProducer.disconnect();
 			metricsServer.close();
 		} catch (error) {
-			log.error(
-				{ err: normalizeError(error) },
-				'Failed to disconnect DLQ redrive worker during shutdown',
-			);
+			log.error({ err: normalizeError(error) }, 'Failed to disconnect Kafka consumer');
 			process.exitCode = 1;
 		}
 

@@ -4,7 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import healthRoute from '@/routes/health.route';
 import metricsRoute from '@/routes/metrics.route';
-import { httpLogger } from '@/lib/logger';
+import { httpLogger, logger } from '@/lib/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/error-handler';
 import { metricsMiddleware } from '@/middleware/metrics';
 import { contextMiddleware, requestContext } from '@/middleware/context';
@@ -17,6 +17,9 @@ export const authClient = createAuthClient({
 	issuer: env.AUTH_ISSUER,
 	audience: env.AUTH_AUDIENCE,
 	redisUrl: env.REDIS_URL,
+	logger: {
+		error: (obj: Record<string, unknown>, msg: string) => logger.error(obj, msg),
+	},
 });
 
 const app = express();

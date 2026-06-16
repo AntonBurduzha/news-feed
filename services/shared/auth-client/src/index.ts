@@ -28,16 +28,22 @@ export const redisCacheMissesTotal = new client.Counter({
 	labelNames: ['operation', 'service'] as const,
 });
 
+export type AuthClientLogger = {
+	error: (obj: Record<string, unknown>, msg: string) => void;
+};
+
 export function createAuthClient(cfg: {
 	jwksUrl: string;
 	issuer: string;
 	audience: string;
 	redisUrl: string;
+	logger?: AuthClientLogger;
 }): AuthClient {
 	const jwks = createRemoteJWKSet(new URL(cfg.jwksUrl));
 	const redisClient: RedisClientType = createClient({ url: cfg.redisUrl });
+	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
 	redisClient.on('error', err => {
-		console.error('createAuthClient: Redis connection error', err);
+		logError({ err }, 'Redis connection error');
 	});
 	void redisClient.connect();
 
@@ -97,7 +103,7 @@ export function createAuthClient(cfg: {
 
 	async function disconnect(): Promise<void> {
 		await redisClient.quit().catch(err => {
-			console.error('createAuthClient: Redis disconnect error', err);
+			logError({ err }, 'Redis disconnect error');
 		});
 	}
 

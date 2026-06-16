@@ -59,10 +59,6 @@ async function run(): Promise<void> {
 				});
 			} catch (error) {
 				const dlqReason = normalizeError(error).message;
-				logger.error(
-					{ dlqReason, originalTopic: topic, originalPartition: partition },
-					'Processing failed after retries, sending to DLQ',
-				);
 				dlqMessagesTotal.inc({ service: env.SERVICE_NAME, original_topic: topic });
 				await kafkaProducer.sendToDLQ(message, {
 					dlqReason,

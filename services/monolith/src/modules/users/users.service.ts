@@ -81,8 +81,7 @@ class UserService {
 				throw new NotFoundError(`User ${id} was not found`);
 			}
 			if (postIds.length > 0) {
-				//await this.messagesOutboxRepository.create(message, client);
-				logger.info({ postIds }, 'Posts deleted message fanned out via Kafka');
+				logger.info({ postIds }, 'Posts deleted');
 			}
 		});
 	}

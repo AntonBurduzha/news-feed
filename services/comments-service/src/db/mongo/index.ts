@@ -23,7 +23,7 @@ export async function connectMongo(): Promise<void> {
 		connectTimeoutMS: 5_000,
 		serverSelectionTimeoutMS: 5_000,
 	});
-	logger.info('MongoDB connection verified on url: ' + uri);
+	logger.info({ host: env.MONGO_DB_HOST }, 'MongoDB connection verified');
 }
 
 export async function disconnectMongo(): Promise<void> {

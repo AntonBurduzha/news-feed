@@ -11,10 +11,9 @@ let activeCleanup: Promise<void> | null = null;
 async function runCleanup(): Promise<void> {
 	if (shuttingDown) return;
 
-	logger.info('Running outbox cleanup');
 	try {
 		await messagesOutboxService.cleanUpSentMessages();
-		logger.info('Outbox cleanup completed');
+		logger.debug('Outbox cleanup completed');
 	} catch (error) {
 		logger.error({ err: normalizeError(error) }, 'Outbox cleanup failed');
 	}

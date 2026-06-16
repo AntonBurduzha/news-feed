@@ -50,7 +50,7 @@ class FollowerPartitionsService {
 	async getOrAssignPartition(followerId: string): Promise<number> {
 		const existingPartition = await this.getPartitionForFollower(followerId);
 		if (existingPartition !== null) {
-			logger.info(
+			logger.debug(
 				{ followerId, partition: existingPartition },
 				'Follower already has a dedicated partition',
 			);

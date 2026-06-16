@@ -2,7 +2,6 @@ import { Kafka, logLevel, type Consumer, type EachMessagePayload } from 'kafkajs
 import { env } from '@/config/env';
 import { kafkaMessagesConsumedTotal, kafkaConsumerProcessingDuration } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
-import { formatKafkaTimestamp } from '@/utils/date';
 
 class KafkaConsumer {
 	private readonly kafka: Kafka;
@@ -46,18 +45,15 @@ class KafkaConsumer {
 					consumer_group: this.groupId,
 					service: env.SERVICE_NAME,
 				});
-				logger.info(
+				logger.debug(
 					{
 						topic,
 						...(correlationId ? { correlationId } : {}),
 						partition,
 						offset: message.offset,
-						timestamp: formatKafkaTimestamp(message.timestamp),
 						key: message.key?.toString(),
-						value: message.value?.toString(),
-						groupId: this.groupId,
 					},
-					'Consumed Kafka message',
+					'Kafka consumed message',
 				);
 				try {
 					await topicCallback(payload);

@@ -25,7 +25,7 @@ class KafkaAdmin {
 		const metadata = await this.admin.fetchTopicMetadata({ topics: topicsAvailable });
 		metadata.topics.forEach(topic => {
 			this.partitionCounts.set(topic.name, topic.partitions.length);
-			logger.info(
+			logger.debug(
 				{ topic: topic.name, partitions: topic.partitions.length },
 				'Current partitions count for topic',
 			);
