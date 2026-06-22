@@ -21,3 +21,6 @@ yarn-error.log*
 
 # Logs
 /logs
+
+# Test coverage
+**/coverage

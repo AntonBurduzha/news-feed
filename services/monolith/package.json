@@ -15,6 +15,9 @@
 		"migrate:postgres": "node-pg-migrate up -m ./src/db/postgres/migrations --tsx --tsconfig tsconfig.json",
 		"migrate:postgres:down": "node-pg-migrate down -m ./src/db/postgres/migrations --tsx --tsconfig tsconfig.json",
 		"migrate:postgres:create": "node-pg-migrate create -m ./src/db/postgres/migrations --migration-file-language ts",
+		"test:unit": "vitest run --project unit",
+		"test:watch": "vitest --project unit",
+		"test:coverage": "vitest run --coverage",
 		"lint": "eslint .",
 		"format": "prettier --write \"src/**/*.ts\" \"*.ts\" \"workers/**/*.ts\"",
 		"typecheck": "tsc -p tsconfig.json --noEmit"
@@ -56,6 +59,7 @@
 		"@types/node": "^25.5.0",
 		"@types/node-cron": "^3.0.11",
 		"@types/pg": "^8.20.0",
+		"@vitest/coverage-v8": "^4.1.9",
 		"dotenv": "^17.4.0",
 		"eslint": "^10.1.0",
 		"globals": "^17.4.0",
@@ -65,6 +69,7 @@
 		"tsc-alias": "^1.8.16",
 		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",
-		"typescript-eslint": "^8.58.0"
+		"typescript-eslint": "^8.58.0",
+		"vitest": "^4.1.9"
 	}
 }

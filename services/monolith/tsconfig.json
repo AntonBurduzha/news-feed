@@ -10,6 +10,6 @@
 			"@/*": ["src/*"]
 		}
 	},
-	"include": ["src/**/*", "workers/**/*"],
+	"include": ["src/**/*", "workers/**/*", "tests/**/*", "vitest.config.ts"],
 	"exclude": ["node_modules", "dist"]
 }
