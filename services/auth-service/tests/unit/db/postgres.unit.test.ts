@@ -7,6 +7,7 @@ const { mockPool, mockClient } = vi.hoisted(() => {
 	const mockPool = {
 		query: vi.fn(),
 		connect: vi.fn(() => Promise.resolve(mockClient)),
+		on: vi.fn(),
 		totalCount: 0,
 		idleCount: 0,
 		waitingCount: 0,

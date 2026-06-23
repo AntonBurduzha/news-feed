@@ -78,20 +78,22 @@ const baseOptions = {
 	},
 };
 
-const loggerOptions = env.isProduction
-	? baseOptions
-	: {
-			...baseOptions,
-			transport: {
-				target: 'pino-pretty',
-				options: {
-					singleLine: true,
-					colorize: true,
-					translateTime: 'SYS:standard',
-					ignore: 'pid,hostname',
+const loggerOptions = env.isTest
+	? { ...baseOptions, level: 'silent' as const }
+	: env.isProduction
+		? baseOptions
+		: {
+				...baseOptions,
+				transport: {
+					target: 'pino-pretty',
+					options: {
+						singleLine: true,
+						colorize: true,
+						translateTime: 'SYS:standard',
+						ignore: 'pid,hostname',
+					},
 				},
-			},
-		};
+			};
 
 export const logger = pino(loggerOptions);
 

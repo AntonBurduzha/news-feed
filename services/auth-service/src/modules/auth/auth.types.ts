@@ -43,4 +43,19 @@ export type CreateRefreshTokenInput = {
 	expiresAt: Date;
 };
 
+export type RegisterResult = {
+	accessToken: string;
+	refreshToken: string;
+	userId: string;
+};
+
+export type LoginResult = {
+	accessToken: string;
+	refreshToken: string;
+};
+
+export type RefreshResult = {
+	accessToken: string;
+};
+
 export { LoginRequest, RegisterRequest, RefreshRequest };

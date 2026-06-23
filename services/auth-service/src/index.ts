@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import app from '@/app';
 import { env } from '@/config/env';
-import { checkPostgresConnection, startPgPoolMetrics } from '@/db/postgres';
+import { checkPostgresConnection, disconnectPostgres, startPgPoolMetrics } from '@/db/postgres';
 import { connectRedis, disconnectRedis } from '@/db/redis';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -45,7 +45,10 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 		server.close(() => resolve());
 	});
 
-	const disposables: Array<[string, () => Promise<unknown>]> = [['Redis', () => disconnectRedis()]];
+	const disposables: Array<[string, () => Promise<unknown>]> = [
+		['Redis', () => disconnectRedis()],
+		['Postgres pool', () => disconnectPostgres()],
+	];
 	for (const [label, close] of disposables) {
 		await close().catch(err => {
 			logger.error({ err: normalizeError(err) }, `Failed to disconnect ${label} during shutdown`);

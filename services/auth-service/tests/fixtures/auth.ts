@@ -20,6 +20,7 @@ const refreshTokenData = { raw: 'r', tokenHash: 'h', expiresAt: new Date() };
 const user = { user_id: 'user-1' };
 const hashedPassword = 'hashed_password';
 const accessToken = 'access.jwt';
+const credentials = { email: 'a@b.com', password: 'password' };
 
 export const authFixtures = {
 	newUserInput,
@@ -38,4 +39,5 @@ export const authFixtures = {
 	user,
 	hashedPassword,
 	accessToken,
+	credentials,
 };

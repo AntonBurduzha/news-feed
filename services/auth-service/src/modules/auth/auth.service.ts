@@ -15,7 +15,14 @@ import {
 	ACCESS_TOKEN_TTL_SEC,
 } from '@/lib/tokens';
 import { authRepository } from './auth.repository';
-import type { LoginRequest, RegisterRequest, RefreshRequest } from './auth.types';
+import type {
+	LoginRequest,
+	RegisterRequest,
+	RefreshRequest,
+	RegisterResult,
+	LoginResult,
+	RefreshResult,
+} from './auth.types';
 
 const tracer = trace.getTracer('auth-service');
 
@@ -25,9 +32,7 @@ class AuthService {
 		this.authRepository = authRepository;
 	}
 
-	async register(
-		input: RegisterRequest,
-	): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
+	async register(input: RegisterRequest): Promise<RegisterResult> {
 		const span = tracer.startSpan('auth.register', {
 			attributes: { 'auth.email': input.body.email },
 		});
@@ -65,7 +70,7 @@ class AuthService {
 		});
 	}
 
-	async login(input: LoginRequest): Promise<{ accessToken: string; refreshToken: string }> {
+	async login(input: LoginRequest): Promise<LoginResult> {
 		const span = tracer.startSpan('auth.login', {
 			attributes: { 'auth.email': input.body.email },
 		});
@@ -101,7 +106,7 @@ class AuthService {
 		});
 	}
 
-	async refresh(input: RefreshRequest): Promise<{ accessToken: string }> {
+	async refresh(input: RefreshRequest): Promise<RefreshResult> {
 		const span = tracer.startSpan('auth.refresh');
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {

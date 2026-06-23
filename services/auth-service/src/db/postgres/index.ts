@@ -14,6 +14,14 @@ export const db = new Pool({
 	connectionTimeoutMillis: 5_000,
 });
 
+db.on('error', err => {
+	logger.error({ err }, 'Unexpected idle client error');
+});
+
+export async function disconnectPostgres(): Promise<void> {
+	await db.end();
+}
+
 export async function checkPostgresConnection(): Promise<void> {
 	try {
 		await db.query('SELECT 1');

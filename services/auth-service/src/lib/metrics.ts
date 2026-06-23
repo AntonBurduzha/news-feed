@@ -1,6 +1,9 @@
 import client from 'prom-client';
+import { env } from '@/config/env';
 
-client.collectDefaultMetrics({ prefix: 'nodejs_' });
+if (!env.isTest) {
+	client.collectDefaultMetrics({ prefix: 'nodejs_' });
+}
 
 export const httpRequestsTotal = new client.Counter({
 	name: 'http_requests_total',
