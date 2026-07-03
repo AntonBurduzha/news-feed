@@ -2,7 +2,7 @@ import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
-import { AppError, NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/lib/errors';
 import { postsCreatedTotal, postsDeletedTotal } from '@/lib/metrics';
 import { KafkaTopics } from '@/kafka/topics';
 import { requestContext } from '@/middleware/context';
@@ -102,7 +102,12 @@ class PostService {
 						traceId,
 					);
 					if (followersMessages.length === 0) {
-						return { mappedPost, outboxMessageCount, followerCount: followerIds.length, fanOutMessageCount: 0 };
+						return {
+							mappedPost,
+							outboxMessageCount,
+							followerCount: followerIds.length,
+							fanOutMessageCount: 0,
+						};
 					}
 
 					for (const msg of followersMessages) {
@@ -117,9 +122,6 @@ class PostService {
 						fanOutMessageCount: followersMessages.length,
 					};
 				});
-				if (!result) {
-					throw new AppError('Database did not return the created post');
-				}
 				postsCreatedTotal.inc({ service: env.SERVICE_NAME });
 				logger.info(
 					{
@@ -182,17 +184,17 @@ class PostService {
 		const limit = query.limit ?? null;
 		const cursor = query.cursor ?? null;
 		const userId = query.userId;
-		const result = await this.postRepository.findAll(userId, limit, cursor);
+		const { posts, totalCount } = await this.postRepository.findAll(userId, limit, cursor);
 		let nextCursor = null;
-		if (result.length > 0) {
-			const lastRow = result[result.length - 1];
+		if (posts.length > 0 && limit && posts.length < totalCount) {
+			const lastRow = posts[posts.length - 1];
 			const createdAtDate = new Date(lastRow.created_at);
 			const cursorString = createdAtDate.toISOString();
 			nextCursor = Buffer.from(cursorString).toString('base64');
 		}
 		return {
-			posts: result.map(mapPost),
-			nextCursor: cursor && limit && result.length < limit ? null : nextCursor,
+			posts: posts.map(mapPost),
+			nextCursor,
 		};
 	}
 

@@ -1,0 +1,182 @@
+import { describe, test, expect, vi, beforeEach } from 'vitest';
+import {
+	postFixture,
+	deletePostOutboxMessage,
+	postCreatedOutboxMessage,
+	getPostFanOutOutboxMessage,
+} from '../../../fixtures/posts';
+
+vi.mock('@/db/postgres', () => ({
+	withTransaction: vi.fn(async (fn: (client: object) => Promise<unknown>) => fn({})),
+	db: {},
+}));
+vi.mock('@/modules/posts/posts.repository', () => ({
+	postsRepository: {
+		findAll: vi.fn(),
+		findById: vi.fn(),
+		create: vi.fn(),
+		update: vi.fn(),
+		delete: vi.fn(),
+	},
+}));
+vi.mock('@/modules/messages-outbox/messages-outbox.repository', () => ({
+	messagesOutboxRepository: { create: vi.fn() },
+}));
+vi.mock('@/modules/follow/follow.repository', () => ({
+	followsRepository: { findFollowersByFollowingId: vi.fn() },
+}));
+vi.mock('@/modules/follower-partitions/follower-partitions.service', () => ({
+	followerPartitionsService: { getPartitionForFollower: vi.fn() },
+}));
+vi.mock('@/modules/users/users.service', () => ({
+	userService: { getUser: vi.fn() },
+}));
+
+import { postsRepository } from '@/modules/posts/posts.repository';
+import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
+import { followsRepository } from '@/modules/follow/follow.repository';
+import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
+import { userService } from '@/modules/users/users.service';
+import { postService } from '@/modules/posts/posts.service';
+import { NotFoundError } from '@/lib/errors';
+import { User } from '@/modules/users/users.types';
+
+const postsRepo = vi.mocked(postsRepository);
+const followsRepo = vi.mocked(followsRepository);
+const createPostRepositorySpy = vi.spyOn(postsRepository, 'create');
+const createOutboxMessage = vi.spyOn(messagesOutboxRepository, 'create');
+const usersPort = vi.mocked(userService);
+const partitionsSvc = vi.mocked(followerPartitionsService);
+
+describe('PostService.createPost', () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	test('throws NotFoundError when user does not exist', async () => {
+		usersPort.getUser.mockResolvedValue(null as unknown as User);
+		await expect(
+			postService.createPost({ userId: 'user-1', content: 'hi' }),
+		).rejects.toBeInstanceOf(NotFoundError);
+		expect(createPostRepositorySpy).not.toHaveBeenCalled();
+	});
+
+	test('writes post.created.v1 outbox message when author has no followers', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+		usersPort.getUser.mockResolvedValue({ id: 'user-1' } as unknown as User);
+		postsRepo.create.mockResolvedValue(postFixture);
+		followsRepo.findFollowersByFollowingId.mockResolvedValue([]);
+
+		const post = await postService.createPost({ userId: 'user-1', content: 'hello' });
+
+		expect(post.id).toBe('post-1');
+		expect(createOutboxMessage).toHaveBeenCalledTimes(1);
+		expect(createOutboxMessage).toHaveBeenCalledWith(
+			postCreatedOutboxMessage,
+			expect.anything(), // INFO: transaction client
+		);
+		vi.useRealTimers();
+	});
+
+	test('skips fan-out for followers without a partition assignment', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+		usersPort.getUser.mockResolvedValue({ id: 'user-1' } as unknown as User);
+		postsRepo.create.mockResolvedValue(postFixture);
+		followsRepo.findFollowersByFollowingId.mockResolvedValue(['follower-1']);
+		partitionsSvc.getPartitionForFollower.mockResolvedValue(null);
+
+		await postService.createPost({ userId: 'user-1', content: 'hello' });
+
+		expect(createOutboxMessage).toHaveBeenCalledTimes(1);
+		expect(createOutboxMessage).toHaveBeenCalledWith(postCreatedOutboxMessage, expect.anything());
+		vi.useRealTimers();
+	});
+
+	test('writes post.created.v1 and post.fan-out.v1 outbox messages per follower with a partition', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+		usersPort.getUser.mockResolvedValue({ id: 'user-1' } as unknown as User);
+		postsRepo.create.mockResolvedValue(postFixture);
+		followsRepo.findFollowersByFollowingId.mockResolvedValue(['follower-1', 'follower-2']);
+		partitionsSvc.getPartitionForFollower.mockResolvedValueOnce(3).mockResolvedValueOnce(5);
+
+		await postService.createPost({ userId: 'user-1', content: 'hello' });
+
+		expect(createOutboxMessage).toHaveBeenCalledTimes(3);
+		expect(createOutboxMessage.mock.calls).toEqual([
+			[postCreatedOutboxMessage, expect.anything()],
+			[getPostFanOutOutboxMessage('follower-1', 3), expect.anything()],
+			[getPostFanOutOutboxMessage('follower-2', 5), expect.anything()],
+		]);
+		vi.useRealTimers();
+	});
+});
+
+describe('PostService.getPosts', () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	test('should return posts and nextCursor if more more posts', async () => {
+		postsRepo.findAll.mockResolvedValue({ posts: [postFixture], totalCount: 11 });
+		const result = await postService.getPosts({ userId: 'user-1', limit: 10 });
+		expect(result.posts[0]).toMatchObject({ id: 'post-1', userId: 'user-1', content: 'hello' });
+		expect(Buffer.from(result.nextCursor!, 'base64').toString('utf-8')).toBe(
+			postFixture.created_at,
+		);
+	});
+
+	test('should return posts and nullish nextCursor if no more posts', async () => {
+		postsRepo.findAll.mockResolvedValue({ posts: [postFixture, postFixture], totalCount: 2 });
+		const result = await postService.getPosts({ userId: 'user-1', limit: 2 });
+		expect(result.posts).toHaveLength(2);
+		expect(result.nextCursor).toBeNull();
+	});
+});
+
+describe('PostService.getPost', () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	test('returns post when row is present', async () => {
+		postsRepo.findById.mockResolvedValue(postFixture);
+		const result = await postService.getPost('post-1');
+		expect(result).toMatchObject({ id: 'post-1', userId: 'user-1', content: 'hello' });
+	});
+
+	test('throws NotFoundError when row is missing', async () => {
+		postsRepo.findById.mockResolvedValue(null);
+		await expect(postService.getPost('missing')).rejects.toBeInstanceOf(NotFoundError);
+	});
+});
+
+describe('PostService.updatePost', () => {
+	beforeEach(() => vi.clearAllMocks());
+	test('returns updated post when row is present', async () => {
+		postsRepo.update.mockResolvedValue({ ...postFixture, content: 'x' });
+		const result = await postService.updatePost('post-1', { content: 'x' });
+		expect(result).toMatchObject({ id: 'post-1', userId: 'user-1', content: 'x' });
+	});
+
+	test('throws NotFoundError when row is missing', async () => {
+		postsRepo.update.mockResolvedValue(null);
+		await expect(postService.updatePost('missing', { content: 'x' })).rejects.toBeInstanceOf(
+			NotFoundError,
+		);
+	});
+});
+
+describe('PostService.deletePost', () => {
+	beforeEach(() => vi.clearAllMocks());
+	test('writes post.deleted.v1 outbox row on success', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+		postsRepo.delete.mockResolvedValue(true);
+		await postService.deletePost('post-1');
+		expect(createOutboxMessage).toHaveBeenCalledWith(deletePostOutboxMessage, expect.anything());
+		vi.useRealTimers();
+	});
+
+	test('throws NotFoundError when row is missing', async () => {
+		postsRepo.delete.mockResolvedValue(false);
+		await expect(postService.deletePost('missing')).rejects.toBeInstanceOf(NotFoundError);
+		expect(createOutboxMessage).not.toHaveBeenCalled();
+	});
+});

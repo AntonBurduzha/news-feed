@@ -11,31 +11,50 @@ class PostRepository {
 		return rows[0];
 	}
 
-	async findAll(userId: string, limit: number | null, cursor: string | null): Promise<PostRow[]> {
-		let query: string;
-		let queryParams: [string, string, ...number[]] | [string, ...number[]];
+	private buildListFilter(
+		userId: string,
+		cursor: string | null,
+	): { whereClause: string; params: [string] | [string, string] } {
 		if (cursor) {
 			const createdAt = Buffer.from(cursor, 'base64').toString('utf-8');
-			query = `
-				SELECT id, user_id, content, created_at, updated_at 
-				FROM posts 
-				WHERE created_at < $2 AND user_id = $1
-				ORDER BY created_at DESC
-				${limit ? `LIMIT $3` : ''}
-    	`;
-			queryParams = [userId, createdAt, ...(limit ? [limit] : [])];
-		} else {
-			query = `
-				SELECT id, user_id, content, created_at, updated_at 
-				FROM posts 
-				WHERE user_id = $1
-				ORDER BY created_at DESC
-				${limit ? `LIMIT $2` : ''}
-    	`;
-			queryParams = [userId, ...(limit ? [limit] : [])];
+			return {
+				whereClause: 'WHERE user_id = $1 AND created_at < $2',
+				params: [userId, createdAt],
+			};
 		}
-		const { rows } = await db.query<PostRow>(query, queryParams);
-		return rows;
+		return {
+			whereClause: 'WHERE user_id = $1',
+			params: [userId],
+		};
+	}
+
+	async findAll(
+		userId: string,
+		limit: number | null,
+		cursor: string | null,
+	): Promise<{ posts: PostRow[]; totalCount: number }> {
+		const { whereClause, params } = this.buildListFilter(userId, cursor);
+		const postsQuery = `
+			SELECT id, user_id, content, created_at, updated_at
+			FROM posts
+			${whereClause}
+			ORDER BY created_at DESC
+			${limit ? `LIMIT $${params.length + 1}` : ''}
+		`;
+		const postsParams = limit ? [...params, limit] : params;
+		const countQuery = `
+			SELECT COUNT(*)::int AS total_count
+			FROM posts
+			${whereClause}
+		`;
+		const [postsResult, countResult] = await Promise.all([
+			db.query<PostRow>(postsQuery, postsParams),
+			db.query<{ total_count: number }>(countQuery, params),
+		]);
+		return {
+			posts: postsResult.rows,
+			totalCount: countResult.rows[0]?.total_count ?? 0,
+		};
 	}
 
 	async findById(id: string): Promise<PostRow | null> {

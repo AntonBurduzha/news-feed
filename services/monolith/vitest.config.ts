@@ -13,7 +13,22 @@ export default defineConfig({
 				test: {
 					name: 'unit',
 					include: ['tests/unit/**/*.unit.test.ts'],
-					setupFiles: ['./tests/setup.unit.ts'],
+					setupFiles: ['./tests/unit/setup-unit.ts'],
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'integration',
+					include: ['tests/integration/**/*.int.test.ts'],
+					setupFiles: ['./tests/integration/setup-int.ts'],
+					globalSetup: ['./tests/integration/global-setup-int.ts'],
+					sequence: { groupOrder: 1 },
+					pool: 'forks',
+					maxWorkers: 1,
+					isolate: false,
+					testTimeout: 60_000,
+					hookTimeout: 90_000,
 				},
 			},
 		],
