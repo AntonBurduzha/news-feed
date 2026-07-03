@@ -12,7 +12,7 @@ import {
 } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
 import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox.service';
-import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.constants';
+import { runOutboxRelayBatch } from './outbox-relay.batch';
 
 const log = logger.child({ service: env.OUTBOX_RELAY_SERVICE_NAME });
 let outboxRelayInterval: NodeJS.Timeout | null = null;
@@ -51,78 +51,50 @@ async function run(): Promise<void> {
 			await context.with(trace.setSpan(context.active(), batchSpan), async () => {
 				const batchStartedAt = Date.now();
 				try {
-					const pendingMessages = await messagesOutboxService.findPendingMessages();
-					batchSpan.setAttribute('batch.size', pendingMessages.length);
+					const result = await runOutboxRelayBatch({
+						outboxService: messagesOutboxService,
+						producer: kafkaProducer,
+						onPublishSuccess: (topic: string, count: number) => {
+							kafkaMessagesProducedTotal.inc(
+								{
+									topic,
+									service: env.OUTBOX_RELAY_SERVICE_NAME,
+								},
+								count,
+							);
+						},
+						onPublishFailure: (topic, error) => {
+							outboxPublishFailuresTotal.inc({
+								service: env.OUTBOX_RELAY_SERVICE_NAME,
+								topic,
+							});
+							log.error(
+								{ err: normalizeError(error), topic },
+								'Failed to publish message to Kafka',
+							);
+						},
+					});
+
+					batchSpan.setAttribute('batch.size', result.pendingCount);
+					batchSpan.setAttribute('batch.published', result.publishedCount);
 					outboxPendingMessages.set(
 						{ service: env.OUTBOX_RELAY_SERVICE_NAME },
-						pendingMessages.length,
+						result.pendingCount,
 					);
-					if (pendingMessages.length === 0) {
-						return;
-					}
-					log.debug({ pendingCount: pendingMessages.length }, 'Outbox relay batch started');
-					let publishedCount = 0;
-					for (const message of pendingMessages) {
-						const remoteContext = message.traceId
-							? {
-									traceId: message.traceId,
-									spanId: '0000000000000000',
-									traceFlags: 1,
-								}
-							: undefined;
 
-						const publishSpan = tracer.startSpan('outbox-relay.publish', {
-							attributes: { 'kafka.topic': message.topic },
-							links: remoteContext ? [{ context: remoteContext }] : [],
-						});
-						await context.with(trace.setSpan(context.active(), publishSpan), async () => {
-							try {
-								await kafkaProducer.sendMessage(message.topic, [
-									{
-										key: message.payload.key as string,
-										value: message.payload.value as string,
-										headers: {
-											'x-correlation-id': message.correlationId,
-										},
-										...(message.payload.partition
-											? { partition: message.payload.partition as number }
-											: {}),
-									},
-								]);
-								kafkaMessagesProducedTotal.inc({
-									topic: message.topic,
-									service: env.OUTBOX_RELAY_SERVICE_NAME,
-								});
-								publishedCount += 1;
-							} catch (error) {
-								publishSpan.recordException(error as Error);
-								publishSpan.setStatus({
-									code: SpanStatusCode.ERROR,
-									message: (error as Error).message,
-								});
-								outboxPublishFailuresTotal.inc({
-									service: env.OUTBOX_RELAY_SERVICE_NAME,
-									topic: message.topic,
-								});
-								log.error(
-									{ err: normalizeError(error), topic: message.topic },
-									'Failed to publish message to Kafka',
-								);
-							} finally {
-								publishSpan.end();
-							}
-						});
+					if (result.pendingCount > 0) {
+						log.debug(
+							{
+								pendingCount: result.pendingCount,
+								publishedCount: result.publishedCount,
+							},
+							'Outbox batch published',
+						);
+						outboxRelayDurationSeconds.observe(
+							{ service: env.OUTBOX_RELAY_SERVICE_NAME },
+							(Date.now() - batchStartedAt) / 1000,
+						);
 					}
-					log.debug({ publishedCount }, 'Outbox batch published');
-					await messagesOutboxService.updateMessageStatus(
-						pendingMessages.map(m => m.id),
-						MessageOutboxStatus.Sent,
-					);
-					batchSpan.setAttribute('batch.published', publishedCount);
-					outboxRelayDurationSeconds.observe(
-						{ service: env.OUTBOX_RELAY_SERVICE_NAME },
-						(Date.now() - batchStartedAt) / 1000,
-					);
 				} catch (error) {
 					batchSpan.recordException(error as Error);
 					batchSpan.setStatus({
