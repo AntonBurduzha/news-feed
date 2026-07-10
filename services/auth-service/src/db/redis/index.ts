@@ -12,12 +12,16 @@ redisClient.on('error', err => {
 });
 
 export async function connectRedis(): Promise<void> {
-	await redisClient.connect();
+	if (!redisClient.isOpen) {
+		await redisClient.connect();
+	}
 	logger.info('Redis connected');
 }
 
 export async function disconnectRedis(): Promise<void> {
-	await redisClient.quit();
+	if (redisClient.isOpen) {
+		await redisClient.quit();
+	}
 }
 
 export async function cacheToken(token: string, userId: string, ttlSeconds: number): Promise<void> {

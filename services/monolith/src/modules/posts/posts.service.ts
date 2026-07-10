@@ -1,13 +1,11 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { KafkaTopics } from '@news-feed/contracts';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
 import { NotFoundError } from '@/lib/errors';
 import { postsCreatedTotal, postsDeletedTotal } from '@/lib/metrics';
-import { KafkaTopics } from '@/kafka/topics';
 import { requestContext } from '@/middleware/context';
-import { followsRepository } from '@/modules/follow/follow.repository';
-import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 import { postsRepository } from '@/modules/posts/posts.repository';
 import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
 import type { CreateMessageOutboxInput } from '@/modules/messages-outbox/messages-outbox.types';
@@ -33,16 +31,12 @@ function mapPost(row: PostRow): Post {
 }
 
 class PostService {
-	private readonly followsRepository;
-	private readonly followerPartitionsService;
 	private readonly postRepository;
 	private readonly messagesOutboxRepository;
 	private readonly usersPort: UsersPort;
 	constructor(usersPort: UsersPort) {
 		this.usersPort = usersPort;
 		this.postRepository = postsRepository;
-		this.followsRepository = followsRepository;
-		this.followerPartitionsService = followerPartitionsService;
 		this.messagesOutboxRepository = messagesOutboxRepository;
 	}
 
@@ -52,18 +46,13 @@ class PostService {
 			attributes: { 'user.id': input.userId },
 		});
 
-		return context.with(trace.setSpan(context.active(), span), async () => {
+		return context.with(trace.setSpan(context.active(), span), async (): Promise<Post> => {
 			try {
 				const user = await this.usersPort.getUser(input.userId);
 				if (!user) {
 					throw new NotFoundError(`User ${input.userId} was not found`);
 				}
-				const result: {
-					mappedPost: Post;
-					outboxMessageCount: number;
-					followerCount: number;
-					fanOutMessageCount: number;
-				} = await withTransaction(async client => {
+				const result: Post = await withTransaction(async client => {
 					const newPost = await this.postRepository.create(input, client);
 					const mappedPost = mapPost(newPost);
 					const correlationId = requestContext.getStore()?.correlationId ?? '';
@@ -85,55 +74,12 @@ class PostService {
 						correlationId,
 						traceId,
 					};
-					let outboxMessageCount = 0;
 					await this.messagesOutboxRepository.create(postCreatedMsg, client);
-					outboxMessageCount += 1;
-					const followerIds = await this.followsRepository.findFollowersByFollowingId(
-						mappedPost.userId,
-					);
-					span.setAttribute('follower.count', followerIds.length);
-					if (followerIds.length === 0) {
-						return { mappedPost, outboxMessageCount, followerCount: 0, fanOutMessageCount: 0 };
-					}
-					const followersMessages = await this.buildFollowerMessages(
-						mappedPost,
-						followerIds,
-						correlationId,
-						traceId,
-					);
-					if (followersMessages.length === 0) {
-						return {
-							mappedPost,
-							outboxMessageCount,
-							followerCount: followerIds.length,
-							fanOutMessageCount: 0,
-						};
-					}
-
-					for (const msg of followersMessages) {
-						await this.messagesOutboxRepository.create(msg, client);
-						outboxMessageCount += 1;
-					}
-					span.setAttribute('outbox.message_count', outboxMessageCount);
-					return {
-						mappedPost,
-						outboxMessageCount,
-						followerCount: followerIds.length,
-						fanOutMessageCount: followersMessages.length,
-					};
+					return mappedPost;
 				});
 				postsCreatedTotal.inc({ service: env.SERVICE_NAME });
-				logger.info(
-					{
-						postId: result.mappedPost.id,
-						userId: input.userId,
-						followerCount: result.followerCount,
-						outboxMessageCount: result.outboxMessageCount,
-						fanOutMessageCount: result.fanOutMessageCount ?? 0,
-					},
-					'Post created',
-				);
-				return result.mappedPost;
+				logger.info({ postId: result.id, userId: result.userId }, 'Post created');
+				return result;
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
@@ -142,42 +88,6 @@ class PostService {
 				span.end();
 			}
 		});
-	}
-
-	private async buildFollowerMessages(
-		post: Post,
-		followerIds: string[],
-		correlationId: string,
-		traceId: string | undefined,
-	): Promise<CreateMessageOutboxInput[]> {
-		const messagesWithPartitions = await Promise.all(
-			followerIds.map(async followerId => {
-				const partition = await this.followerPartitionsService.getPartitionForFollower(followerId);
-				return { followerId, partition };
-			}),
-		);
-
-		return messagesWithPartitions
-			.filter(({ followerId, partition }) => {
-				if (partition === null) {
-					logger.debug(
-						{ followerId, postId: post.id },
-						'Follower has no dedicated partition — skipping delivery for this follower',
-					);
-					return false;
-				}
-				return true;
-			})
-			.map(({ followerId, partition }) => ({
-				topic: KafkaTopics.PostFanOutV1,
-				payload: {
-					key: followerId,
-					value: JSON.stringify(post),
-					partition: partition!,
-				},
-				correlationId,
-				traceId,
-			}));
 	}
 
 	async getPosts(query: GetPostsQueryParams): Promise<GetPostsResult> {
@@ -204,6 +114,14 @@ class PostService {
 			throw new NotFoundError(`Post ${id} was not found`);
 		}
 		return mapPost(post);
+	}
+
+	async getLatestPostsByAuthors(ids: string[]): Promise<Post[]> {
+		if (ids.length === 0) {
+			return [];
+		}
+		const posts = await this.postRepository.findLatestByAuthors(ids);
+		return posts.map(mapPost);
 	}
 
 	async updatePost(id: string, input: UpdatePostInput): Promise<Post> {
@@ -235,11 +153,12 @@ class PostService {
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
+				const existing = await this.postRepository.findById(id);
+				if (!existing) {
+					throw new NotFoundError(`Post ${id} was not found`);
+				}
 				await withTransaction(async client => {
-					const postIsDeleted = await this.postRepository.delete(id, client);
-					if (!postIsDeleted) {
-						throw new NotFoundError(`Post ${id} was not found`);
-					}
+					await this.postRepository.delete(id, client);
 					const correlationId = requestContext.getStore()?.correlationId ?? '';
 					const spanContext = trace.getActiveSpan()?.spanContext();
 					const traceId = spanContext?.traceId;
@@ -250,6 +169,7 @@ class PostService {
 							value: JSON.stringify({
 								v: 1,
 								postId: id,
+								userId: existing.user_id,
 								createdAt: new Date().toISOString(),
 							}),
 						},

@@ -6,7 +6,6 @@
 	"main": "./dist/src/index.js",
 	"scripts": {
 		"dev": "tsx --import ./src/lib/tracing.ts --watch src/index.ts",
-		"worker:fan-out": "OTEL_SERVICE_NAME=fan-out tsx --import ./src/lib/tracing.ts --watch workers/fan-out.ts",
 		"worker:outbox": "OTEL_SERVICE_NAME=outbox-relay tsx --import ./src/lib/tracing.ts --watch workers/outbox-relay.ts",
 		"worker:outbox-cleaner": "OTEL_SERVICE_NAME=outbox-cleaner tsx --import ./src/lib/tracing.ts --watch workers/outbox-cleaner.ts",
 		"worker:dlq-redrive": "OTEL_SERVICE_NAME=dlq-redrive tsx --import ./src/lib/tracing.ts --watch workers/dlq-redrive.ts",

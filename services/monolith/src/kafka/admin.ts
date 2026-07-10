@@ -1,7 +1,7 @@
 import type { Admin } from 'kafkajs';
+import { KafkaTopics } from '@news-feed/contracts';
 import { kafka } from '@/config/kafka';
 import { logger } from '@/lib/logger';
-import { KafkaTopics } from './topics';
 
 class KafkaAdmin {
 	private readonly admin: Admin;
@@ -24,7 +24,6 @@ class KafkaAdmin {
 
 		const metadata = await this.admin.fetchTopicMetadata({ topics: topicsAvailable });
 		metadata.topics.forEach(topic => {
-			this.partitionCounts.set(topic.name, topic.partitions.length);
 			logger.debug(
 				{ topic: topic.name, partitions: topic.partitions.length },
 				'Current partitions count for topic',
@@ -41,25 +40,6 @@ class KafkaAdmin {
 		await this.admin.createTopics({
 			topics: topics.map(topic => ({ topic, numPartitions: 1, replicationFactor: 1 })),
 		});
-	}
-
-	async createPartitions(topic: string, newTotalCount: number): Promise<void> {
-		await this.admin.createPartitions({
-			topicPartitions: [{ topic, count: newTotalCount }],
-		});
-		logger.info(
-			{ topic, previousCount: this.partitionCounts.get(topic) ?? 0, newTotalCount },
-			'Created new Kafka partition on topic',
-		);
-		this.partitionCounts.set(topic, newTotalCount);
-	}
-
-	getPartitionCount(topic: string): number {
-		return this.partitionCounts.get(topic) ?? 0;
-	}
-
-	setPartitionCount(topic: string, count: number): void {
-		this.partitionCounts.set(topic, count);
 	}
 }
 

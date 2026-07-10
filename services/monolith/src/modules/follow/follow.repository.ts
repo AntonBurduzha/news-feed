@@ -15,20 +15,18 @@ class FollowsRepository {
 		return rows[0].ids ?? [];
 	}
 
+	async findFollowingByFollowerId(followerId: string): Promise<string[]> {
+		const query = 'SELECT array_agg(following_id) AS ids FROM follows WHERE follower_id = $1;';
+		const { rows } = await db.query<{ ids: string[] }>(query, [followerId]);
+		return rows[0].ids ?? [];
+	}
+
 	async findById(id: string): Promise<FollowRow | null> {
 		const { rows } = await db.query<FollowRow>(
 			'SELECT id, follower_id, following_id, created_at FROM follows WHERE id = $1;',
 			[id],
 		);
 		return rows[0] ?? null;
-	}
-
-	async countByFollowerId(followerId: string): Promise<number> {
-		const { rows } = await db.query<{ count: number }>(
-			'SELECT count(*) AS count FROM follows WHERE follower_id = $1;',
-			[followerId],
-		);
-		return rows[0].count;
 	}
 
 	async delete(id: string): Promise<boolean> {

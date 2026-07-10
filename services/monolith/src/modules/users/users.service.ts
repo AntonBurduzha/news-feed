@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { KafkaTopics } from '@news-feed/contracts';
 import { withTransaction } from '@/db/postgres';
 import { ValidationError } from '@/lib/errors';
 import s3Service from '@/lib/s3';
 import { NotFoundError } from '@/lib/errors';
-// import { KafkaTopics } from '@/kafka/topics';
 import { logger } from '@/lib/logger';
-// import { requestContext } from '@/middleware/context';
+import { requestContext } from '@/middleware/context';
 import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
 import { postService } from '@/modules/posts/posts.service';
 import { usersRepository } from './users.repository';
@@ -69,6 +69,14 @@ class UserService {
 		return mapUser(user);
 	}
 
+	async getUsersByIds(ids: string[]): Promise<User[]> {
+		if (ids.length === 0) {
+			return [];
+		}
+		const users = await this.userRepository.findByIds(ids);
+		return users.map(mapUser);
+	}
+
 	async updateUser(id: string, input: UpdateUserInput): Promise<User> {
 		const span = tracer.startSpan('users.updateUser', {
 			attributes: { 'user.id': id },
@@ -103,6 +111,26 @@ class UserService {
 					if (!userIsDeleted) {
 						throw new NotFoundError(`User ${id} was not found`);
 					}
+					const correlationId = requestContext.getStore()?.correlationId ?? '';
+					const spanContext = trace.getActiveSpan()?.spanContext();
+					const traceId = spanContext?.traceId;
+					await this.messagesOutboxRepository.create(
+						{
+							topic: KafkaTopics.UserDeletedV1,
+							payload: {
+								key: id,
+								value: JSON.stringify({
+									v: 1,
+									userId: id,
+									postIds,
+									createdAt: new Date().toISOString(),
+								}),
+							},
+							correlationId,
+							traceId,
+						},
+						client,
+					);
 					if (postIds.length > 0) {
 						span.setAttribute('posts.deleted_count', postIds.length);
 						logger.info({ postIds }, 'Posts deleted');

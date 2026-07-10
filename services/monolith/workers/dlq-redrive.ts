@@ -1,11 +1,11 @@
 import http from 'node:http';
 import promClient from 'prom-client';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { KafkaTopics } from '@news-feed/contracts';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { dlqMessagesRedrivenTotal } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
-import { KafkaTopics } from '@/kafka/topics';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
 

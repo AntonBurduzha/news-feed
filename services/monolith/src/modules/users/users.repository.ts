@@ -21,6 +21,15 @@ class UserRepository {
 		return rows[0] ?? null;
 	}
 
+	async findByIds(ids: string[]): Promise<UserRow[]> {
+		if (ids.length === 0) {
+			return [];
+		}
+		const query = 'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ANY($1);';
+		const { rows } = await db.query<UserRow>(query, [ids]);
+		return rows;
+	}
+
 	async update(id: string, input: UpdateUserInput): Promise<UserRow | null> {
 		const query =
 			'UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email, avatar_url, created_at;';

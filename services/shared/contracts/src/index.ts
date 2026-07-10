@@ -1,36 +1,54 @@
 import { z } from 'zod';
 
-export const commentAuthor = z.object({
-	userId: z.uuid(),
-	name: z.string().min(1),
-	avatarUrl: z.string().nullable(),
-});
+export const KafkaTopics = {
+	AppDLQ: 'app-dlq',
+	PostCreatedV1: 'post.created.v1',
+	PostDeletedV1: 'post.deleted.v1',
+	UserDeletedV1: 'user.deleted.v1',
+} as const;
 
-export const createCommentRequest = z.object({
+export const postCreatedEvent = z.object({
+	v: z.literal(1),
 	postId: z.uuid(),
-	author: commentAuthor,
-	content: z.string().min(1).max(280),
-});
-
-export const comment = z.object({
-	id: z.string(),
-	postId: z.string(),
-	author: commentAuthor,
-	content: z.string(),
+	userId: z.uuid(),
 	createdAt: z.string(),
 });
 
-export const getCommentsResponse = z.object({
-	comments: z.array(comment),
+export const postDeletedEvent = z.object({
+	v: z.literal(1),
+	postId: z.uuid(),
+	userId: z.uuid(),
+	createdAt: z.string(),
+});
+
+export const userDeletedEvent = z.object({
+	v: z.literal(1),
+	userId: z.uuid(),
+	postIds: z.array(z.uuid()).default([]),
+	createdAt: z.string(),
+});
+
+export const feedPost = z.object({
+	id: z.string(),
+	userId: z.string(),
+	content: z.string(),
+	createdAt: z.string(),
+	author: z
+		.object({
+			name: z.string(),
+			avatarUrl: z.string().nullable(),
+			createdAt: z.string(),
+		})
+		.optional(),
+});
+
+export const getFeedResponse = z.object({
+	posts: z.array(feedPost),
 	nextCursor: z.string().nullable(),
 });
 
-export const deleteCommentParams = z.object({
-	id: z.string().min(1),
-});
-
-export type CommentAuthor = z.infer<typeof commentAuthor>;
-export type CreateCommentRequest = z.infer<typeof createCommentRequest>;
-export type Comment = z.infer<typeof comment>;
-export type GetCommentsResponse = z.infer<typeof getCommentsResponse>;
-export type DeleteCommentParams = z.infer<typeof deleteCommentParams>;
+export type PostCreatedEvent = z.infer<typeof postCreatedEvent>;
+export type PostDeletedEvent = z.infer<typeof postDeletedEvent>;
+export type UserDeletedEvent = z.infer<typeof userDeletedEvent>;
+export type FeedPost = z.infer<typeof feedPost>;
+export type GetFeedResponse = z.infer<typeof getFeedResponse>;

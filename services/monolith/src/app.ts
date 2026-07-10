@@ -14,6 +14,7 @@ import postRoutes from '@/modules/posts/posts.routes';
 import followRoutes from '@/modules/follow/follow.routes';
 import commentProxy from '@/modules/comments/comments.proxy';
 import metricsRoute from '@/routes/metrics.route';
+import internalRoutes from '@/modules/internal/internal.routes';
 // import testRoute from '@/routes/test.route';
 
 export const authClient = createAuthClient({
@@ -47,6 +48,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // app.use(testRoute);
 app.use(healthRoute);
 app.use(metricsRoute);
+app.use('/internal', internalRoutes);
 
 app.use(authClient.middleware());
 app.use((req, _res, next) => {

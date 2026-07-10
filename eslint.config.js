@@ -21,6 +21,7 @@ export default tseslint.config(
 					'./services/shared/contracts/tsconfig.json',
 					'./services/shared/auth-client/tsconfig.json',
 					'./services/shared/auth-client/tsconfig.test.json',
+					'./services/fan-out-service/tsconfig.json',
 				],
 				tsconfigRootDir: import.meta.dirname,
 			},

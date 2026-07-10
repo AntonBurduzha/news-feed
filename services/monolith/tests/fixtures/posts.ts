@@ -1,6 +1,6 @@
+import { KafkaTopics } from '@news-feed/contracts';
 import type { Post, PostRow } from '@/modules/posts/posts.types';
 import type { CreateMessageOutboxInput } from '@/modules/messages-outbox/messages-outbox.types';
-import { KafkaTopics } from '@/kafka/topics';
 
 export const postFixture: PostRow = {
 	id: 'post-1',
@@ -25,6 +25,7 @@ export const deletePostOutboxMessage: CreateMessageOutboxInput = {
 		value: JSON.stringify({
 			v: 1,
 			postId: 'post-1',
+			userId: 'user-1',
 			createdAt: '2026-01-01T00:00:00.000Z',
 		}),
 	},
@@ -45,20 +46,4 @@ export const postCreatedOutboxMessage: CreateMessageOutboxInput = {
 	},
 	correlationId: '',
 	traceId: 'test-trace',
-};
-
-export const getPostFanOutOutboxMessage = (
-	followerId: string,
-	partition: number,
-): CreateMessageOutboxInput => {
-	return {
-		topic: KafkaTopics.PostFanOutV1,
-		payload: {
-			key: followerId,
-			value: JSON.stringify(mappedPost),
-			partition: partition,
-		},
-		correlationId: '',
-		traceId: 'test-trace',
-	};
 };

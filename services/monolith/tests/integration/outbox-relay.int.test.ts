@@ -26,8 +26,8 @@ describe('Outbox relay integration', () => {
 			[
 				'post.created.v1',
 				JSON.stringify({ key: 'post-1', value: '{"v":1,"postId":"post-1"}' }),
-				'post.fan-out.v1',
-				JSON.stringify({ key: 'follower-1', value: '{"id":"post-1"}', partition: 2 }),
+				'post.deleted.v1',
+				JSON.stringify({ key: 'post-1', value: '{"v":1,"postId":"post-1","userId":"user-1"}' }),
 			],
 		);
 
@@ -45,8 +45,8 @@ describe('Outbox relay integration', () => {
 		expect(producer.sendMessage).toHaveBeenCalledWith('post.created.v1', [
 			expect.objectContaining({ key: 'post-1' }),
 		]);
-		expect(producer.sendMessage).toHaveBeenCalledWith('post.fan-out.v1', [
-			expect.objectContaining({ key: 'follower-1', partition: 2 }),
+		expect(producer.sendMessage).toHaveBeenCalledWith('post.deleted.v1', [
+			expect.objectContaining({ key: 'post-1' }),
 		]);
 
 		const { rows } = await db.query(`SELECT status FROM messages_outbox`);
@@ -60,10 +60,10 @@ describe('Outbox relay integration', () => {
 			   ($1, $2, 'corr-1', 'pending'),
 			   ($3, $4, 'corr-2', 'pending')`,
 			[
-				'post.fan-out.v1',
-				JSON.stringify({ key: 'follower-1', value: '{"id":"post-1"}', partition: 2 }),
-				'post.fan-out.v1',
-				JSON.stringify({ key: 'follower-2', value: '{"id":"post-1"}', partition: 5 }),
+				'user.deleted.v1',
+				JSON.stringify({ key: 'user-1', value: '{"v":1,"userId":"user-1","postIds":[]}' }),
+				'user.deleted.v1',
+				JSON.stringify({ key: 'user-2', value: '{"v":1,"userId":"user-2","postIds":[]}' }),
 			],
 		);
 
@@ -78,9 +78,9 @@ describe('Outbox relay integration', () => {
 		expect(result.publishedCount).toBe(2);
 		expect(result.markedSentCount).toBe(2);
 		expect(producer.sendMessage).toHaveBeenCalledTimes(1);
-		expect(producer.sendMessage).toHaveBeenCalledWith('post.fan-out.v1', [
-			expect.objectContaining({ key: 'follower-1', partition: 2 }),
-			expect.objectContaining({ key: 'follower-2', partition: 5 }),
+		expect(producer.sendMessage).toHaveBeenCalledWith('user.deleted.v1', [
+			expect.objectContaining({ key: 'user-1' }),
+			expect.objectContaining({ key: 'user-2' }),
 		]);
 
 		const { rows } = await db.query(`SELECT status FROM messages_outbox`);
@@ -117,13 +117,13 @@ describe('Outbox relay integration', () => {
 			[
 				'post.created.v1',
 				JSON.stringify({ key: 'ok', value: '{}' }),
-				'post.fan-out.v1',
+				'post.deleted.v1',
 				JSON.stringify({ key: 'boom', value: '{}' }),
 			],
 		);
 
 		producer.sendMessage.mockImplementation((topic: string) => {
-			if (topic === 'post.fan-out.v1') {
+			if (topic === 'post.deleted.v1') {
 				return Promise.reject(new Error('publish failed'));
 			}
 			return Promise.resolve(undefined);
@@ -140,6 +140,6 @@ describe('Outbox relay integration', () => {
 
 		const { rows } = await db.query(`SELECT topic, status FROM messages_outbox ORDER BY topic`);
 		expect(rows).toContainEqual({ topic: 'post.created.v1', status: 'sent' });
-		expect(rows).toContainEqual({ topic: 'post.fan-out.v1', status: 'pending' });
+		expect(rows).toContainEqual({ topic: 'post.deleted.v1', status: 'pending' });
 	});
 });

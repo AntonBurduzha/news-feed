@@ -6,7 +6,6 @@ import { db, checkPostgresConnection, startPgPoolMetrics } from '@/db/postgres';
 import { kafkaAdmin } from '@/kafka/admin';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
-import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 
 let server: Server | undefined;
 let shuttingDown = false;
@@ -52,8 +51,6 @@ async function start(): Promise<void> {
 	startPgPoolMetrics();
 
 	await kafkaAdmin.connect();
-
-	await followerPartitionsService.reconcilePartitions();
 
 	server = app
 		.listen(env.PORT, () => {

@@ -63,6 +63,19 @@ class PostRepository {
 		return rows[0] ?? null;
 	}
 
+	async findLatestByAuthors(ids: string[]): Promise<PostRow[]> {
+		if (ids.length === 0) {
+			return [];
+		}
+		const query = `
+			SELECT id, user_id, content, created_at, updated_at FROM posts
+			WHERE user_id = ANY($1)
+			ORDER BY created_at DESC
+			LIMIT 20;`;
+		const { rows } = await db.query<PostRow>(query, [ids]);
+		return rows;
+	}
+
 	async update(id: string, input: UpdatePostInput): Promise<PostRow | null> {
 		const query =
 			'UPDATE posts SET content = $1 WHERE id = $2 RETURNING id, user_id, content, created_at, updated_at;';

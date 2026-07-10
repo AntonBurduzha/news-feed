@@ -1,10 +1,6 @@
-import {
-	CompressionTypes,
-	type KafkaMessage as IncomingMessage,
-	type Producer,
-} from 'kafkajs';
+import { CompressionTypes, type KafkaMessage as IncomingMessage, type Producer } from 'kafkajs';
+import { KafkaTopics } from '@news-feed/contracts';
 import { kafka } from '@/config/kafka';
-import { KafkaTopics } from '@/kafka/topics';
 import { logger } from '@/lib/logger';
 
 type KafkaMessage = {

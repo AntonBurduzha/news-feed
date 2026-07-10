@@ -109,7 +109,7 @@ describe('Posts integration tests', () => {
 	});
 
 	describe('DELETE /posts/:id', () => {
-		test('deletes the post and writes a pending post.deleted.v1 outbox row', async () => {
+		test('deletes the post and writes a pending post.deleted.v1 outbox row with userId', async () => {
 			const response: { body: Post } = await request(app)
 				.post('/posts')
 				.send({ userId: USER_ID, content: 'to delete' })
@@ -123,11 +123,18 @@ describe('Posts integration tests', () => {
 			expect(posts).toHaveLength(0);
 
 			const { rows: outboxMessages } = await db.query(
-				`SELECT status FROM messages_outbox WHERE topic = 'post.deleted.v1' AND payload->>'key' = $1`,
+				`SELECT status, payload FROM messages_outbox
+				 WHERE topic = 'post.deleted.v1' AND payload->>'key' = $1`,
 				[response.body.id],
 			);
 			expect(outboxMessages).toHaveLength(1);
 			expect(outboxMessages[0]).toMatchObject({ status: 'pending' });
+			const payload = (outboxMessages[0] as { payload: { value: string } }).payload;
+			expect(JSON.parse(payload.value)).toMatchObject({
+				v: 1,
+				postId: response.body.id,
+				userId: USER_ID,
+			});
 		});
 
 		test('returns 404 when deleting a non-existent post', async () => {

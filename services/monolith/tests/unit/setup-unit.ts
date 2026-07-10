@@ -8,6 +8,7 @@ process.env.POSTGRES_DB_NAME = 'test';
 process.env.KAFKA_NEWS_FEED_SERVICE_CLIENT_ID = 'test-client';
 process.env.AWS_REGION = 'us-east-1';
 process.env.AWS_BUCKET_NAME = 'test-bucket';
+process.env.INTERNAL_API_KEY = 'test-internal-api-key';
 
 vi.mock('@opentelemetry/api', async importOriginal => {
 	const actual = await importOriginal<typeof import('@opentelemetry/api')>();

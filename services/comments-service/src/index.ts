@@ -1,11 +1,11 @@
 import type { Server } from 'node:http';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { KafkaTopics } from '@news-feed/contracts';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { connectMongo, disconnectMongo, startMongoPoolMetrics } from '@/db/mongo';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
-import { KafkaTopics } from '@/kafka/topics';
 import { dlqMessagesTotal } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -53,8 +53,7 @@ async function start(): Promise<void> {
 										{ topic, postId, event: KafkaTopics.PostDeletedV1 },
 										'Kafka consumed message',
 									);
-									const deletedCount =
-										await commentsService.deleteCommentsByPostId(postId);
+									const deletedCount = await commentsService.deleteCommentsByPostId(postId);
 									logger.info(
 										{
 											postId,

@@ -3,7 +3,6 @@ import { trace, context, propagation, SpanKind, SpanStatusCode } from '@opentele
 import { env } from '@/config/env';
 import { kafkaMessagesConsumedTotal, kafkaConsumerProcessingDuration } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
-import { createFollowerPartitionAssigner } from '@/kafka/partition-assigner';
 
 const tracer = trace.getTracer('kafka-consumer');
 
@@ -12,19 +11,14 @@ class KafkaConsumer {
 	private readonly consumer: Consumer;
 	private readonly groupId: string;
 
-	constructor(clientId: string, brokers: string[], groupId: string, partitionIndex?: number) {
+	constructor(clientId: string, brokers: string[], groupId: string) {
 		this.kafka = new Kafka({
 			clientId,
 			brokers,
 			logLevel: logLevel.INFO,
 		});
 		this.groupId = groupId;
-		this.consumer = this.kafka.consumer({
-			groupId,
-			...(partitionIndex !== undefined
-				? { partitionAssigners: [createFollowerPartitionAssigner(partitionIndex)] }
-				: {}),
-		});
+		this.consumer = this.kafka.consumer({ groupId });
 	}
 
 	async connect(): Promise<void> {

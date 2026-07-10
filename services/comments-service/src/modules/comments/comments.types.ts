@@ -1,4 +1,4 @@
-import type { CommentAuthor, Comment } from '@news-feed/contracts';
+import type { CommentAuthor, Comment } from './comments.schemas';
 
 export type CreateCommentInput = {
 	postId: string;

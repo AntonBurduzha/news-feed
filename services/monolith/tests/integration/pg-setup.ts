@@ -29,6 +29,7 @@ export async function startPostgres() {
 	process.env.KAFKA_NEWS_FEED_SERVICE_CLIENT_ID = 'test-client';
 	process.env.AWS_REGION = 'us-east-1';
 	process.env.AWS_BUCKET_NAME = 'test-bucket';
+	process.env.INTERNAL_API_KEY = 'test-internal-api-key';
 
 	await run('npm', ['run', 'migrate:postgres'], {
 		cwd: monolithRoot,

@@ -5,6 +5,7 @@
 		{ "path": "./services/comments-service" },
 		{ "path": "./services/auth-service" },
 		{ "path": "./services/shared/contracts" },
-		{ "path": "./services/shared/auth-client" }
+		{ "path": "./services/shared/auth-client" },
+		{ "path": "./services/fan-out-service" }
 	]
 }

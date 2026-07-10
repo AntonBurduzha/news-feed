@@ -3,7 +3,6 @@ import { env } from '@/config/env';
 import { NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { followsCreatedTotal, followsDeletedTotal } from '@/lib/metrics';
-import { followerPartitionsService } from '@/modules/follower-partitions/follower-partitions.service';
 import { followsRepository } from './follow.repository';
 import type { CreateFollowInput, Follow, FollowRow } from './follow.types';
 import { userService } from '@/modules/users/users.service';
@@ -22,13 +21,11 @@ function mapFollow(row: FollowRow): Follow {
 
 class FollowService {
 	private readonly followsRepository;
-	private readonly followerPartitionsService;
 
 	private readonly usersPort: UsersPort;
 	constructor(usersPort: UsersPort) {
 		this.usersPort = usersPort;
 		this.followsRepository = followsRepository;
-		this.followerPartitionsService = followerPartitionsService;
 	}
 
 	async createFollow(input: CreateFollowInput): Promise<Follow> {
@@ -53,38 +50,10 @@ class FollowService {
 					throw new Error('Database did not return the created follow');
 				}
 				followsCreatedTotal.inc({ service: env.SERVICE_NAME });
-				try {
-					const partitionSpan = tracer.startSpan('follow.assignPartition', {
-						attributes: { 'follower.id': input.followerId },
-					});
-					const partitionIndex = await context.with(
-						trace.setSpan(context.active(), partitionSpan),
-						async () => {
-							try {
-								return await this.followerPartitionsService.getOrAssignPartition(
-									input.followerId,
-								);
-							} finally {
-								partitionSpan.end();
-							}
-						},
-					);
-					span.setAttribute('kafka.partition', partitionIndex);
-					logger.info(
-						{
-							followerId: input.followerId,
-							followingId: input.followingId,
-							assignedPartition: partitionIndex,
-						},
-						'Follow created',
-					);
-				} catch {
-					logger.error(
-						{ followerId: input.followerId },
-						'Failed to assign Kafka partition during follow creation',
-					);
-				}
-
+				logger.info(
+					{ followerId: input.followerId, followingId: input.followingId },
+					'Follow created',
+				);
 				return mapFollow(follow);
 			} catch (error) {
 				span.recordException(error as Error);
@@ -99,6 +68,11 @@ class FollowService {
 	async getFollowersByFollowingId(followingId: string): Promise<string[]> {
 		const followers = await this.followsRepository.findFollowersByFollowingId(followingId);
 		return followers;
+	}
+
+	async getFollowingByFollowerId(followerId: string): Promise<string[]> {
+		const following = await this.followsRepository.findFollowingByFollowerId(followerId);
+		return following;
 	}
 
 	async deleteFollow(id: string): Promise<void> {
@@ -118,19 +92,7 @@ class FollowService {
 				}
 				followsDeletedTotal.inc({ service: env.SERVICE_NAME });
 				span.setAttribute('follower.id', follow.follower_id);
-				const remainingFollows = await this.followsRepository.countByFollowerId(
-					follow.follower_id,
-				);
-				if (remainingFollows === 0) {
-					try {
-						await this.followerPartitionsService.releasePartition(follow.follower_id);
-					} catch {
-						logger.error(
-							{ followerId: follow.follower_id },
-							'Failed to release Kafka partition after last unfollow',
-						);
-					}
-				}
+				logger.info({ followerId: follow.follower_id }, 'Follow deleted');
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
