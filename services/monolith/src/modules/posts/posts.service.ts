@@ -1,9 +1,9 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import { KafkaTopics } from '@news-feed/contracts';
+import { KafkaTopics, encodePaginationCursor, decodePaginationCursor } from '@news-feed/contracts';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError, ValidationError } from '@/lib/errors';
 import { postsCreatedTotal, postsDeletedTotal } from '@/lib/metrics';
 import { requestContext } from '@/middleware/context';
 import { postsRepository } from '@/modules/posts/posts.repository';
@@ -15,10 +15,43 @@ import type {
 	UpdatePostInput,
 	Post,
 	PostRow,
-	GetPostsQueryParams,
 	GetPostsResult,
 } from './posts.types';
 import type { UsersPort } from './posts.ports';
+
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 10;
+
+function parseCursor(cursor: string | null | undefined) {
+	if (!cursor) return { createdAt: null, id: null };
+	try {
+		const decoded = decodePaginationCursor(cursor);
+		return { createdAt: decoded.createdAt, id: decoded.id };
+	} catch {
+		throw new ValidationError('Invalid pagination cursor');
+	}
+}
+
+function normalizeLimit(limit?: number): number {
+	if (limit === undefined || !Number.isFinite(limit)) {
+		return DEFAULT_PAGE_SIZE;
+	}
+	return Math.min(Math.max(Math.trunc(limit), 1), MAX_PAGE_SIZE);
+}
+
+function toPageResult(rows: PostRow[], limit: number): GetPostsResult {
+	const hasMore = rows.length > limit;
+	const page = hasMore ? rows.slice(0, limit) : rows;
+	const last = page[page.length - 1];
+	const nextCursor =
+		hasMore && last
+			? encodePaginationCursor({
+					createdAt: new Date(last.created_at).toISOString(),
+					id: last.id,
+				})
+			: null;
+	return { posts: page.map(mapPost), nextCursor };
+}
 
 function mapPost(row: PostRow): Post {
 	return {
@@ -90,24 +123,6 @@ class PostService {
 		});
 	}
 
-	async getPosts(query: GetPostsQueryParams): Promise<GetPostsResult> {
-		const limit = query.limit ?? null;
-		const cursor = query.cursor ?? null;
-		const userId = query.userId;
-		const { posts, totalCount } = await this.postRepository.findAll(userId, limit, cursor);
-		let nextCursor = null;
-		if (posts.length > 0 && limit && posts.length < totalCount) {
-			const lastRow = posts[posts.length - 1];
-			const createdAtDate = new Date(lastRow.created_at);
-			const cursorString = createdAtDate.toISOString();
-			nextCursor = Buffer.from(cursorString).toString('base64');
-		}
-		return {
-			posts: posts.map(mapPost),
-			nextCursor,
-		};
-	}
-
 	async getPost(id: string): Promise<Post> {
 		const post = await this.postRepository.findById(id);
 		if (!post) {
@@ -116,12 +131,33 @@ class PostService {
 		return mapPost(post);
 	}
 
-	async getLatestPostsByAuthors(ids: string[]): Promise<Post[]> {
+	async getPostsByAuthors(
+		ids: string[],
+		limit: number,
+		cursor: string | null,
+	): Promise<GetPostsResult> {
+		const tracer = trace.getTracer('posts-service');
+		const span = tracer.startSpan('posts.getPostsByAuthors', {
+			attributes: { 'author.ids': ids.join(',') },
+		});
 		if (ids.length === 0) {
-			return [];
+			span.end();
+			return { posts: [], nextCursor: null };
 		}
-		const posts = await this.postRepository.findLatestByAuthors(ids);
-		return posts.map(mapPost);
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const safeLimit = normalizeLimit(limit);
+				const cursorParams = parseCursor(cursor);
+				const rows = await this.postRepository.findByAuthors(ids, safeLimit + 1, cursorParams);
+				return toPageResult(rows, safeLimit);
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw error;
+			} finally {
+				span.end();
+			}
+		});
 	}
 
 	async updatePost(id: string, input: UpdatePostInput): Promise<Post> {

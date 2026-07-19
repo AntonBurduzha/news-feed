@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
@@ -9,10 +10,17 @@ import { KafkaTopics } from '@news-feed/contracts';
 import { withRetry } from '@/lib/retry';
 import { dlqMessagesTotal } from '@/lib/metrics';
 import { connectRedis, disconnectRedis } from './db/redis';
-import { onPostCreated, onPostDeleted, onUserDeleted } from './modules/feed/feed.consumer';
+import {
+	onFollowChanged,
+	onPostCreated,
+	onPostDeleted,
+	onUserDeleted,
+} from './modules/feed/feed.consumer';
 
 let server: Server | undefined;
 let shuttingDown = false;
+
+const fanOutTracer = trace.getTracer('fan-out-projection');
 
 const consumer = new KafkaConsumer(
 	'fan-out-service-consumer',
@@ -25,22 +33,60 @@ async function startConsumer(): Promise<void> {
 	await kafkaProducer.connect();
 
 	await consumer.subscribeAndListen(
-		[KafkaTopics.PostCreatedV1, KafkaTopics.PostDeletedV1, KafkaTopics.UserDeletedV1],
+		[
+			KafkaTopics.PostCreatedV1,
+			KafkaTopics.PostDeletedV1,
+			KafkaTopics.UserDeletedV1,
+			KafkaTopics.FollowChangedV1,
+		],
 		async ({ message, topic, partition }) => {
 			try {
 				await withRetry(async () => {
 					const value = message.value!.toString();
-					switch (topic) {
-						case KafkaTopics.PostCreatedV1:
-							return onPostCreated(value);
-						case KafkaTopics.PostDeletedV1:
-							return onPostDeleted(value);
-						case KafkaTopics.UserDeletedV1:
-							return onUserDeleted(value);
-						default:
-							logger.error({ topic }, 'Unknown topic');
-							return;
+					const parsed = JSON.parse(value) as Record<string, unknown>;
+					const spanAttributes: Record<string, string> = { 'kafka.topic': topic };
+					if (typeof parsed.postId === 'string') {
+						spanAttributes['post.id'] = parsed.postId;
 					}
+					if (typeof parsed.userId === 'string') {
+						spanAttributes['user.id'] = parsed.userId;
+					}
+					if (typeof parsed.followerId === 'string') {
+						spanAttributes['follower.id'] = parsed.followerId;
+					}
+
+					const handlerSpan = fanOutTracer.startSpan(`fan-out.${topic}`, {
+						attributes: spanAttributes,
+					});
+					await context.with(trace.setSpan(context.active(), handlerSpan), async () => {
+						try {
+							switch (topic) {
+								case KafkaTopics.PostCreatedV1:
+									await onPostCreated(value);
+									break;
+								case KafkaTopics.PostDeletedV1:
+									await onPostDeleted(value);
+									break;
+								case KafkaTopics.UserDeletedV1:
+									await onUserDeleted(value);
+									break;
+								case KafkaTopics.FollowChangedV1:
+									await onFollowChanged(value);
+									break;
+								default:
+									logger.error({ topic }, 'Unknown topic');
+							}
+						} catch (error) {
+							handlerSpan.recordException(error as Error);
+							handlerSpan.setStatus({
+								code: SpanStatusCode.ERROR,
+								message: (error as Error).message,
+							});
+							throw error;
+						} finally {
+							handlerSpan.end();
+						}
+					});
 				});
 			} catch (error) {
 				const dlqReason = normalizeError(error).message;
@@ -55,9 +101,31 @@ async function startConsumer(): Promise<void> {
 	);
 }
 
+const BACKGROUND_SERVICES = [
+	{ name: 'Redis', start: connectRedis },
+	{ name: 'Kafka consumer', start: startConsumer },
+] as const;
+const BACKGROUND_SERVICE_RETRY_INTERVAL_MS = 2000;
+
+async function startBackgroundServiceSafely(
+	serviceName: string,
+	startServiceCb: () => Promise<void>,
+): Promise<void> {
+	while (!shuttingDown) {
+		try {
+			await startServiceCb();
+			return;
+		} catch (error) {
+			logger.warn(
+				{ err: normalizeError(error), serviceName },
+				`${serviceName} unavailable, retrying in ${BACKGROUND_SERVICE_RETRY_INTERVAL_MS}ms`,
+			);
+			await new Promise(resolve => setTimeout(resolve, BACKGROUND_SERVICE_RETRY_INTERVAL_MS));
+		}
+	}
+}
+
 async function start(): Promise<void> {
-	await connectRedis();
-	await startConsumer();
 	server = app
 		.listen(env.PORT, () => {
 			logger.info({ serviceName: env.SERVICE_NAME }, `ready on port ${env.PORT}`);
@@ -66,6 +134,9 @@ async function start(): Promise<void> {
 			process.exitCode = 1;
 			void shutdown('server_error', error);
 		});
+	for (const service of BACKGROUND_SERVICES) {
+		void startBackgroundServiceSafely(service.name, service.start);
+	}
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {

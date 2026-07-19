@@ -1,6 +1,8 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import type { GetFeedResponse, FeedPost } from '@news-feed/contracts';
+import { type GetFeedResponse, type FeedPost } from '@news-feed/contracts';
 import { env } from '@/config/env';
+import { logger } from '@/lib/logger';
+import { isRedisDown } from '@/db/redis';
 import {
 	feedRequestsTotal,
 	feedCacheHitsTotal,
@@ -16,27 +18,19 @@ import {
 
 const tracer = trace.getTracer('feed-service');
 
-const encodeCursor = (score: number) => Buffer.from(String(score)).toString('base64');
-const decodeCursor = (c: string | null) => (c ? Number(Buffer.from(c, 'base64').toString()) : null);
+const PAGE_SIZE = 10;
+const CACHE_TTL_SECONDS = 300;
 
 class FeedService {
-	private readonly userCache = new Map<string, MonolithUser>();
-	async getFeed(userId: string, limit: number, cursor: string | null): Promise<GetFeedResponse> {
-		const span = tracer.startSpan('feed.getFeed', { attributes: { 'user.id': userId, limit } });
+	async getFeed(userId: string, cursor: string | null): Promise<GetFeedResponse> {
+		const span = tracer.startSpan('feed.getFeed', { attributes: { 'user.id': userId } });
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
 				feedRequestsTotal.inc({ service: env.SERVICE_NAME });
-				const cursorScore = decodeCursor(cursor);
-
-				const hasFeed = await feedCache.hasFeed(userId);
-				if (hasFeed) {
-					feedCacheHitsTotal.inc({ service: env.SERVICE_NAME });
-					return this.readPageFromCache(userId, limit, cursorScore);
+				if (cursor) {
+					return await this.readFromMonolith(userId, cursor);
 				}
-
-				feedCacheMissesTotal.inc({ service: env.SERVICE_NAME });
-				await this.buildFeed(userId);
-				return this.readPageFromCache(userId, limit, cursorScore);
+				return await this.readFirstPage(userId);
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
@@ -47,53 +41,95 @@ class FeedService {
 		});
 	}
 
-	private async buildFeed(userId: string): Promise<void> {
+	private async readFirstPage(userId: string): Promise<GetFeedResponse> {
+		try {
+			const cached = await feedCache.getFeed(userId);
+			if (cached) {
+				feedCacheHitsTotal.inc({ service: env.SERVICE_NAME });
+				trace.getActiveSpan()?.setAttribute('feed.cache_hit', true);
+				return cached;
+			}
+			feedCacheMissesTotal.inc({ service: env.SERVICE_NAME });
+			trace.getActiveSpan()?.setAttribute('feed.cache_hit', false);
+			const page = await this.buildFirstPage(userId);
+			await feedCache.setFeed(userId, page, CACHE_TTL_SECONDS);
+			return page;
+		} catch (error) {
+			const isRedisDownError = isRedisDown(error);
+			logger.error(
+				{ err: error, userId },
+				isRedisDownError
+					? 'redis unavailable while reading first page'
+					: 'error reading first page',
+			);
+			if (isRedisDownError) {
+				return this.readFromMonolith(userId, null);
+			} else {
+				throw error;
+			}
+		}
+	}
+
+	private async buildFirstPage(userId: string): Promise<GetFeedResponse> {
 		const endTimer = feedBuildDurationSeconds.startTimer({ service: env.SERVICE_NAME });
 		try {
 			const followingIds = await monolithClient.getFollowing(userId);
+			trace.getActiveSpan()?.setAttribute('following.count', followingIds.length);
 			if (followingIds.length === 0) {
-				await feedCache.buildFeed(userId, [], 300);
-				return;
+				return { posts: [], nextCursor: null };
 			}
-
-			const posts = await monolithClient.getPostsByAuthors(followingIds);
-			const users = await monolithClient.getUsers(followingIds);
-			for (const user of users) {
-				this.userCache.set(user.id, user);
-			}
-			const items = posts.map((p: MonolithPost) => {
-				const user = this.userCache.get(p.userId);
-				return {
-					postId: p.id,
-					createdAtMs: Date.parse(p.createdAt),
-					payload: JSON.stringify({
-						...p,
-						author: user ? { name: user.name, avatarUrl: user.avatarUrl } : null,
-					}),
-				};
-			});
-			await feedCache.buildFeed(userId, items, 300);
+			const { posts, nextCursor } = await monolithClient.getPostsByAuthors(
+				followingIds,
+				PAGE_SIZE,
+				null,
+			);
+			const enriched = await this.extendPostsWithAuthor(posts);
+			trace.getActiveSpan()?.setAttribute('posts.count', enriched.length);
+			return { posts: enriched, nextCursor };
+		} catch (error) {
+			logger.error({ err: error, userId }, 'error building first page');
+			throw error;
 		} finally {
 			endTimer();
 		}
 	}
 
-	private async readPageFromCache(
-		userId: string,
-		limit: number,
-		cursorScore: number | null = null,
-	): Promise<GetFeedResponse> {
-		const { postIds, scores } = await feedCache.readPage(userId, limit, cursorScore);
-		if (postIds.length === 0) return { posts: [], nextCursor: null };
+	private async readFromMonolith(userId: string, cursor: string | null): Promise<GetFeedResponse> {
+		const followingIds = await monolithClient.getFollowing(userId);
+		trace.getActiveSpan()?.setAttribute('following.count', followingIds.length);
+		if (followingIds.length === 0) {
+			return { posts: [], nextCursor: null };
+		}
+		const { posts, nextCursor } = await monolithClient.getPostsByAuthors(
+			followingIds,
+			PAGE_SIZE,
+			cursor,
+		);
+		const extendedPosts = await this.extendPostsWithAuthor(posts);
+		trace.getActiveSpan()?.setAttribute('posts.count', extendedPosts.length);
+		return { posts: extendedPosts, nextCursor };
+	}
 
-		const rawPosts = await feedCache.getPosts(postIds);
-		const posts: FeedPost[] = rawPosts
-			.filter((v): v is string => v !== null)
-			.map(v => JSON.parse(v) as FeedPost);
+	private async extendPostsWithAuthor(posts: MonolithPost[]): Promise<FeedPost[]> {
+		if (posts.length === 0) {
+			return [];
+		}
+		const authorIds = [...new Set(posts.map(p => p.userId))];
+		const users = await monolithClient.getUsers(authorIds);
+		const usersMap = new Map(users.map(user => [user.id, user]));
+		return posts.map(post => this.toFeedPost(post, usersMap.get(post.userId)));
+	}
 
-		const lastScore = scores[scores.length - 1];
-		const nextCursor = posts.length === limit ? encodeCursor(lastScore) : null;
-		return { posts, nextCursor };
+	private toFeedPost(p: MonolithPost, author?: MonolithUser): FeedPost {
+		return {
+			id: p.id,
+			userId: p.userId,
+			content: p.content,
+			createdAt: p.createdAt,
+			author: author
+				? { name: author.name, avatarUrl: author.avatarUrl, createdAt: author.createdAt }
+				: undefined,
+		};
 	}
 }
 

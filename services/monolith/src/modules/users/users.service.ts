@@ -9,10 +9,9 @@ import { NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { requestContext } from '@/middleware/context';
 import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
-import { postService } from '@/modules/posts/posts.service';
+import { followsRepository } from '@/modules/follow/follow.repository';
 import { usersRepository } from './users.repository';
 import type { CreateUserInput, UpdateUserInput, User, UserRow } from './users.types';
-import type { PostsPort } from './users.ports';
 
 const tracer = trace.getTracer('users-service');
 
@@ -29,11 +28,11 @@ function mapUser(row: UserRow): User {
 class UserService {
 	private readonly userRepository;
 	private readonly messagesOutboxRepository;
-	private readonly postsPort: PostsPort;
-	constructor(postsPort: PostsPort) {
+	private readonly followsRepository;
+	constructor() {
 		this.userRepository = usersRepository;
 		this.messagesOutboxRepository = messagesOutboxRepository;
-		this.postsPort = postsPort;
+		this.followsRepository = followsRepository;
 	}
 
 	async createUser(input: CreateUserInput): Promise<User> {
@@ -104,8 +103,7 @@ class UserService {
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const posts = await this.postsPort.getPosts({ userId: id });
-				const postIds = posts.posts.map(post => post.id);
+				const followerIds = await this.followsRepository.findFollowersByFollowingId(id);
 				await withTransaction(async client => {
 					const userIsDeleted = await this.userRepository.delete(id, client);
 					if (!userIsDeleted) {
@@ -122,7 +120,7 @@ class UserService {
 								value: JSON.stringify({
 									v: 1,
 									userId: id,
-									postIds,
+									followerIds,
 									createdAt: new Date().toISOString(),
 								}),
 							},
@@ -131,10 +129,7 @@ class UserService {
 						},
 						client,
 					);
-					if (postIds.length > 0) {
-						span.setAttribute('posts.deleted_count', postIds.length);
-						logger.info({ postIds }, 'Posts deleted');
-					}
+					logger.info({ userId: id }, 'User deleted');
 				});
 			} catch (error) {
 				span.recordException(error as Error);
@@ -196,7 +191,4 @@ class UserService {
 	}
 }
 
-const postsPort: PostsPort = {
-	getPosts: ({ userId }) => postService.getPosts({ userId }),
-};
-export const userService = new UserService(postsPort);
+export const userService = new UserService();

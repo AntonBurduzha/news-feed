@@ -58,31 +58,8 @@ describe('PostService.createPost', () => {
 
 		expect(post.id).toBe('post-1');
 		expect(createOutboxMessage).toHaveBeenCalledTimes(1);
-		expect(createOutboxMessage).toHaveBeenCalledWith(
-			postCreatedOutboxMessage,
-			expect.anything(),
-		);
+		expect(createOutboxMessage).toHaveBeenCalledWith(postCreatedOutboxMessage, expect.anything());
 		vi.useRealTimers();
-	});
-});
-
-describe('PostService.getPosts', () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	test('should return posts and nextCursor if more more posts', async () => {
-		postsRepo.findAll.mockResolvedValue({ posts: [postFixture], totalCount: 11 });
-		const result = await postService.getPosts({ userId: 'user-1', limit: 10 });
-		expect(result.posts[0]).toMatchObject({ id: 'post-1', userId: 'user-1', content: 'hello' });
-		expect(Buffer.from(result.nextCursor!, 'base64').toString('utf-8')).toBe(
-			postFixture.created_at,
-		);
-	});
-
-	test('should return posts and nullish nextCursor if no more posts', async () => {
-		postsRepo.findAll.mockResolvedValue({ posts: [postFixture, postFixture], totalCount: 2 });
-		const result = await postService.getPosts({ userId: 'user-1', limit: 2 });
-		expect(result.posts).toHaveLength(2);
-		expect(result.nextCursor).toBeNull();
 	});
 });
 

@@ -39,14 +39,21 @@ export function createAuthClient(cfg: {
 	logger?: AuthClientLogger;
 }): AuthClient {
 	const jwks = createRemoteJWKSet(new URL(cfg.jwksUrl));
-	const redisClient: RedisClientType = createClient({ url: cfg.redisUrl });
+	const redisClient: RedisClientType = createClient({
+		url: cfg.redisUrl,
+		disableOfflineQueue: true,
+		socket: {
+			connectTimeout: 500,
+			reconnectStrategy: retries => Math.min(retries * 50, 2000),
+		},
+	});
 	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
 	const tracer = trace.getTracer('auth-client');
 
-	redisClient.on('error', err => {
-		logError({ err }, 'Redis connection error');
+	redisClient.on('error', err => logError({ err }, 'Redis connection error'));
+	void redisClient.connect().catch(err => {
+		logError({ err }, 'Redis unavailable, skipping auth cache');
 	});
-	void redisClient.connect();
 
 	async function verify(bearer: string): Promise<UserContext> {
 		const span = tracer.startSpan('auth-client.verify');

@@ -1,9 +1,3 @@
-export type GetPostsQueryParams = {
-	cursor?: string;
-	limit?: number;
-	userId: string;
-};
-
 export type Post = {
 	id: string;
 	userId: string;
@@ -32,4 +26,9 @@ export type CreatePostInput = {
 
 export type UpdatePostInput = {
 	content: string;
+};
+
+export type CursorParams = {
+	createdAt: string | null;
+	id: string | null;
 };

@@ -1,12 +1,17 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
+import { withTransaction } from '@/db/postgres';
+import { requestContext } from '@/middleware/context';
+import { KafkaTopics } from '@news-feed/contracts';
 import { NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { followsCreatedTotal, followsDeletedTotal } from '@/lib/metrics';
+import { userService } from '@/modules/users/users.service';
+import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
 import { followsRepository } from './follow.repository';
 import type { CreateFollowInput, Follow, FollowRow } from './follow.types';
-import { userService } from '@/modules/users/users.service';
 import type { UsersPort } from './follow.ports';
+import { CreateMessageOutboxInput } from '../messages-outbox/messages-outbox.types';
 
 const tracer = trace.getTracer('follow-service');
 
@@ -21,11 +26,12 @@ function mapFollow(row: FollowRow): Follow {
 
 class FollowService {
 	private readonly followsRepository;
-
+	private readonly messagesOutboxRepository;
 	private readonly usersPort: UsersPort;
 	constructor(usersPort: UsersPort) {
 		this.usersPort = usersPort;
 		this.followsRepository = followsRepository;
+		this.messagesOutboxRepository = messagesOutboxRepository;
 	}
 
 	async createFollow(input: CreateFollowInput): Promise<Follow> {
@@ -45,16 +51,35 @@ class FollowService {
 				if (!following) {
 					throw new NotFoundError(`Following ${input.followingId} was not found`);
 				}
-				const follow = await this.followsRepository.create(input);
-				if (!follow) {
-					throw new Error('Database did not return the created follow');
-				}
+				const result = await withTransaction(async client => {
+					const createdFollow = await this.followsRepository.create(input, client);
+					const correlationId = requestContext.getStore()?.correlationId ?? '';
+					const traceId = trace.getActiveSpan()?.spanContext()?.traceId;
+					const mappedFollow = mapFollow(createdFollow);
+					const followCreatedMsg: CreateMessageOutboxInput = {
+						topic: KafkaTopics.FollowChangedV1,
+						payload: {
+							key: createdFollow.id,
+							value: JSON.stringify({
+								v: 1,
+								followerId: createdFollow.follower_id,
+								followingId: createdFollow.following_id,
+								action: 'created',
+								createdAt: new Date().toISOString(),
+							}),
+						},
+						correlationId,
+						traceId,
+					};
+					await this.messagesOutboxRepository.create(followCreatedMsg, client);
+					return mappedFollow;
+				});
 				followsCreatedTotal.inc({ service: env.SERVICE_NAME });
 				logger.info(
 					{ followerId: input.followerId, followingId: input.followingId },
 					'Follow created',
 				);
-				return mapFollow(follow);
+				return result;
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
@@ -85,14 +110,35 @@ class FollowService {
 				if (!follow) {
 					throw new NotFoundError(`Follow ${id} was not found`);
 				}
-
-				const deleted = await this.followsRepository.delete(id);
-				if (!deleted) {
-					throw new NotFoundError(`Follow ${id} was not found`);
-				}
-				followsDeletedTotal.inc({ service: env.SERVICE_NAME });
-				span.setAttribute('follower.id', follow.follower_id);
-				logger.info({ followerId: follow.follower_id }, 'Follow deleted');
+				await withTransaction(async client => {
+					const followIsDeleted = await this.followsRepository.delete(id, client);
+					if (!followIsDeleted) {
+						throw new NotFoundError(`Follow ${id} was not found`);
+					}
+					const correlationId = requestContext.getStore()?.correlationId ?? '';
+					const traceId = trace.getActiveSpan()?.spanContext()?.traceId;
+					const followDeletedMsg: CreateMessageOutboxInput = {
+						topic: KafkaTopics.FollowChangedV1,
+						payload: {
+							key: id,
+							value: JSON.stringify({
+								v: 1,
+								followerId: follow.follower_id,
+								followingId: follow.following_id,
+								action: 'deleted',
+								createdAt: new Date().toISOString(),
+							}),
+						},
+						correlationId,
+						traceId,
+					};
+					await this.messagesOutboxRepository.create(followDeletedMsg, client);
+					followsDeletedTotal.inc({ service: env.SERVICE_NAME });
+					logger.info(
+						{ followerId: follow.follower_id, followingId: follow.following_id },
+						'Follow deleted',
+					);
+				});
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });

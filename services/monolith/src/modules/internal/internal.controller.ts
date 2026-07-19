@@ -3,6 +3,7 @@ import { asyncHandler } from '@/lib/async-handler';
 import { followService } from '@/modules/follow/follow.service';
 import { postService } from '@/modules/posts/posts.service';
 import { userService } from '@/modules/users/users.service';
+import type { GetPostsByAuthorsRequest } from './internal.schemas';
 
 export const getFollowingByFollowerId: RequestHandler = asyncHandler(async (req, res) => {
 	const { userId } = req.params as { userId: string };
@@ -16,10 +17,10 @@ export const getFollowersByFollowingId: RequestHandler = asyncHandler(async (req
 	res.json(followers);
 });
 
-export const getLatestPostsByAuthors: RequestHandler = asyncHandler(async (req, res) => {
-	const { ids } = req.body as { ids: string[] };
-	const posts = await postService.getLatestPostsByAuthors(ids);
-	res.json(posts);
+export const getPostsByAuthors: RequestHandler = asyncHandler(async (req, res) => {
+	const { ids, limit, cursor } = req.body as GetPostsByAuthorsRequest;
+	const result = await postService.getPostsByAuthors(ids, limit ?? 10, cursor ?? null);
+	res.json(result);
 });
 
 export const getUsersByIds: RequestHandler = asyncHandler(async (req, res) => {

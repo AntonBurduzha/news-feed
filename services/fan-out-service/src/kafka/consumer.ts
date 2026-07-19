@@ -73,7 +73,7 @@ class KafkaConsumer {
 					service: env.SERVICE_NAME,
 				});
 
-				logger.debug(
+				logger.info(
 					{
 						topic,
 						...(correlationId ? { correlationId } : {}),

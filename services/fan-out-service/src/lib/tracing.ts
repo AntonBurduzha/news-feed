@@ -32,8 +32,6 @@ const sdk = new NodeSDK({
 			'@opentelemetry/instrumentation-pg': { enabled: false },
 			'@opentelemetry/instrumentation-redis': { enabled: true },
 			'@opentelemetry/instrumentation-kafkajs': { enabled: true },
-			'@opentelemetry/instrumentation-mongodb': { enabled: true },
-			'@opentelemetry/instrumentation-mongoose': { enabled: true },
 		}),
 	],
 });

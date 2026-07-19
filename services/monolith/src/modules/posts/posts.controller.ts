@@ -10,15 +10,6 @@ export const createPost: RequestHandler = asyncHandler(async (req, res) => {
 	res.status(httpStatus.CREATED).json(post);
 });
 
-export const getPosts: RequestHandler = asyncHandler(async (req, res) => {
-	const result = await postService.getPosts({
-		userId: req.query.userId as string,
-		limit: Number(req.query.limit),
-		cursor: req.query.cursor as string | undefined,
-	});
-	res.json(result);
-});
-
 export const getPost: RequestHandler = asyncHandler(async (req, res) => {
 	const { id } = req.params as { id: string };
 	const post = await postService.getPost(id);

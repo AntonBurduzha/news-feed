@@ -1,11 +1,16 @@
+import { PoolClient } from 'pg';
 import { db } from '@/db/postgres';
 import type { CreateFollowInput, FollowRow } from './follow.types';
 
 class FollowsRepository {
-	async create(input: CreateFollowInput): Promise<FollowRow> {
+	async create(input: CreateFollowInput, client?: PoolClient): Promise<FollowRow> {
+		const connection = client ?? db;
 		const query = `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) 
 									RETURNING id, follower_id, following_id, created_at;`;
-		const { rows } = await db.query<FollowRow>(query, [input.followerId, input.followingId]);
+		const { rows } = await connection.query<FollowRow>(query, [
+			input.followerId,
+			input.followingId,
+		]);
 		return rows[0];
 	}
 
@@ -29,9 +34,10 @@ class FollowsRepository {
 		return rows[0] ?? null;
 	}
 
-	async delete(id: string): Promise<boolean> {
+	async delete(id: string, client?: PoolClient): Promise<boolean> {
+		const connection = client ?? db;
 		const query = 'DELETE FROM follows WHERE id = $1;';
-		const { rowCount } = await db.query(query, [id]);
+		const { rowCount } = await connection.query(query, [id]);
 		return (rowCount ?? 0) > 0;
 	}
 }

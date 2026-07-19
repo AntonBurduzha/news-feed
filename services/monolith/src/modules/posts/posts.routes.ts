@@ -1,19 +1,15 @@
 import { Router } from 'express';
-import { createPost, deletePost, getPost, getPosts, updatePost } from './posts.controller';
+import { createPost, deletePost, getPost, updatePost } from './posts.controller';
 import {
 	createPostRequestSchema,
 	updatePostRequestSchema,
 	postIdRequestSchema,
-	postsQuerySchema,
 } from './posts.schemas';
 import { validate } from '@/middleware/validate';
 
 const router = Router();
 
-router
-	.route('/')
-	.post(validate(createPostRequestSchema), createPost)
-	.get(validate(postsQuerySchema), getPosts);
+router.route('/').post(validate(createPostRequestSchema), createPost);
 
 router
 	.route('/:id')
