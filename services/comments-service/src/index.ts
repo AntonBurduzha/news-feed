@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { KafkaTopics } from '@news-feed/contracts';
+import { BackgroundSupervisor } from '@news-feed/runtime';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { connectMongo, disconnectMongo, startMongoPoolMetrics } from '@/db/mongo';
@@ -14,7 +15,15 @@ import { commentsService } from '@/modules/comments/comments.service';
 import { postsProjectionService } from '@/modules/posts-projection/posts-projection.service';
 
 let server: Server | undefined;
-let shuttingDown = false;
+
+const backgroundSupervisor = new BackgroundSupervisor({
+	logger: {
+		info: (obj, msg) => logger.info(obj, msg),
+		warn: (obj, msg) => logger.warn(obj, msg),
+		error: (obj, msg) => logger.error(obj, msg),
+	},
+});
+
 const consumer = new KafkaConsumer(
 	'comments-svc-consumer',
 	env.KAFKA_BROKERS,
@@ -23,9 +32,7 @@ const consumer = new KafkaConsumer(
 
 const projectionTracer = trace.getTracer('comments-projection');
 
-async function start(): Promise<void> {
-	await connectMongo();
-	startMongoPoolMetrics();
+async function startKafkaConsumer(): Promise<void> {
 	await consumer.connect();
 	await kafkaProducer.connect();
 
@@ -99,6 +106,29 @@ async function start(): Promise<void> {
 			}
 		},
 	);
+}
+
+async function cleanupKafka(): Promise<void> {
+	const errors: unknown[] = [];
+	try {
+		await consumer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+	try {
+		await kafkaProducer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+
+	if (errors.length > 0) {
+		throw new AggregateError(errors, 'Kafka cleanup failed');
+	}
+}
+
+async function start(): Promise<void> {
+	await connectMongo();
+	startMongoPoolMetrics();
 
 	server = app
 		.listen(env.PORT, () => {
@@ -108,20 +138,27 @@ async function start(): Promise<void> {
 			process.exitCode = 1;
 			void shutdown('server_error', error);
 		});
+
+	backgroundSupervisor.start({
+		name: 'Kafka consumer',
+		mode: 'once',
+		run: startKafkaConsumer,
+		cleanup: cleanupKafka,
+	});
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
-	if (shuttingDown) {
+	if (backgroundSupervisor.isShuttingDown()) {
 		return;
 	}
-
-	shuttingDown = true;
 
 	if (error) {
 		logger.error({ err: normalizeError(error), reason }, 'Shutting down after error');
 	} else {
 		logger.info({ reason }, 'Shutting down');
 	}
+
+	await backgroundSupervisor.stop();
 
 	await new Promise<void>(resolve => {
 		if (!server) {
@@ -133,8 +170,7 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Auth client', () => authClient.disconnect()],
-		['Kafka producer', () => kafkaProducer.disconnect()],
-		['Kafka consumer', () => consumer.disconnect()],
+		['Kafka', () => cleanupKafka()],
 		['MongoDB connection', () => disconnectMongo()],
 	];
 	for (const [label, close] of disposables) {

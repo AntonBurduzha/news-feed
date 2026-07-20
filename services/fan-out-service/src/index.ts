@@ -1,8 +1,18 @@
 import type { Server } from 'node:http';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { BackgroundSupervisor } from '@news-feed/runtime';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+
+export const backgroundSupervisor = new BackgroundSupervisor({
+	logger: {
+		info: (obj, msg) => logger.info(obj, msg),
+		warn: (obj, msg) => logger.warn(obj, msg),
+		error: (obj, msg) => logger.error(obj, msg),
+	},
+});
+
 import { normalizeError } from '@/lib/errors';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
@@ -18,7 +28,6 @@ import {
 } from './modules/feed/feed.consumer';
 
 let server: Server | undefined;
-let shuttingDown = false;
 
 const fanOutTracer = trace.getTracer('fan-out-projection');
 
@@ -101,27 +110,20 @@ async function startConsumer(): Promise<void> {
 	);
 }
 
-const BACKGROUND_SERVICES = [
-	{ name: 'Redis', start: connectRedis },
-	{ name: 'Kafka consumer', start: startConsumer },
-] as const;
-const BACKGROUND_SERVICE_RETRY_INTERVAL_MS = 2000;
-
-async function startBackgroundServiceSafely(
-	serviceName: string,
-	startServiceCb: () => Promise<void>,
-): Promise<void> {
-	while (!shuttingDown) {
-		try {
-			await startServiceCb();
-			return;
-		} catch (error) {
-			logger.warn(
-				{ err: normalizeError(error), serviceName },
-				`${serviceName} unavailable, retrying in ${BACKGROUND_SERVICE_RETRY_INTERVAL_MS}ms`,
-			);
-			await new Promise(resolve => setTimeout(resolve, BACKGROUND_SERVICE_RETRY_INTERVAL_MS));
-		}
+async function cleanupKafka(): Promise<void> {
+	const errors: unknown[] = [];
+	try {
+		await consumer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+	try {
+		await kafkaProducer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+	if (errors.length > 0) {
+		throw new AggregateError(errors, 'Kafka cleanup failed');
 	}
 }
 
@@ -134,22 +136,31 @@ async function start(): Promise<void> {
 			process.exitCode = 1;
 			void shutdown('server_error', error);
 		});
-	for (const service of BACKGROUND_SERVICES) {
-		void startBackgroundServiceSafely(service.name, service.start);
-	}
+	backgroundSupervisor.start({
+		name: 'Redis',
+		mode: 'once',
+		run: connectRedis,
+		cleanup: disconnectRedis,
+	});
+
+	backgroundSupervisor.start({
+		name: 'Kafka consumer',
+		mode: 'once',
+		run: startConsumer,
+		cleanup: cleanupKafka,
+	});
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
-	if (shuttingDown) {
+	if (backgroundSupervisor.isShuttingDown()) {
 		return;
 	}
-	shuttingDown = true;
 	if (error) {
 		logger.error({ err: normalizeError(error), reason }, 'Shutting down after error');
 	} else {
 		logger.info({ reason }, 'Shutting down');
 	}
-
+	await backgroundSupervisor.stop();
 	await new Promise<void>(resolve => {
 		if (!server) {
 			resolve();
@@ -160,8 +171,7 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Auth client', () => authClient.disconnect()],
-		['Kafka consumer', () => consumer.disconnect()],
-		['Kafka producer', () => kafkaProducer.disconnect()],
+		['Kafka', () => cleanupKafka()],
 		['Redis', () => disconnectRedis()],
 	];
 	for (const [label, close] of disposables) {

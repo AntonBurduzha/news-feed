@@ -29,6 +29,7 @@ export const redisCacheMissesTotal = new client.Counter({
 
 export type AuthClientLogger = {
 	error: (obj: Record<string, unknown>, msg: string) => void;
+	info: (obj: Record<string, unknown>, msg: string) => void;
 };
 
 export function createAuthClient(cfg: {
@@ -48,9 +49,11 @@ export function createAuthClient(cfg: {
 		},
 	});
 	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
+	const logInfo = cfg.logger?.info ?? ((obj, msg) => console.info(msg, obj));
 	const tracer = trace.getTracer('auth-client');
 
 	redisClient.on('error', err => logError({ err }, 'Redis connection error'));
+	redisClient.on('ready', () => logInfo({}, `Redis client ready for ${cfg.audience}`));
 	void redisClient.connect().catch(err => {
 		logError({ err }, 'Redis unavailable, skipping auth cache');
 	});

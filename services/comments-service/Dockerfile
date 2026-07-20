@@ -8,6 +8,7 @@ COPY services/comments-service/package.json services/comments-service/package.js
 COPY services/auth-service/package.json services/auth-service/package.json
 COPY services/shared/contracts/package.json services/shared/contracts/package.json
 COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY services/shared/runtime/package.json services/shared/runtime/package.json
 
 RUN npm ci
 
@@ -21,6 +22,14 @@ COPY tsconfig.base.json ./
 COPY services/comments-service/ services/comments-service/
 COPY services/shared/contracts/ services/shared/contracts/
 COPY services/shared/auth-client/ services/shared/auth-client/
+COPY services/shared/runtime/ services/shared/runtime/
+
+WORKDIR /app/services/shared/contracts
+RUN npm run build
+WORKDIR /app/services/shared/auth-client
+RUN npm run build
+WORKDIR /app/services/shared/runtime
+RUN npm run build
 
 WORKDIR /app/services/comments-service
 

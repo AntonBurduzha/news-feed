@@ -8,6 +8,7 @@ COPY services/auth-service/package.json services/auth-service/package.json
 COPY services/fan-out-service/package.json services/fan-out-service/package.json
 COPY services/shared/contracts/package.json services/shared/contracts/package.json
 COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY services/shared/runtime/package.json services/shared/runtime/package.json
 RUN npm ci
 
 FROM node:22-alpine AS app
@@ -18,6 +19,14 @@ COPY tsconfig.base.json ./
 COPY services/fan-out-service/ services/fan-out-service/
 COPY services/shared/contracts/ services/shared/contracts/
 COPY services/shared/auth-client/ services/shared/auth-client/
+COPY services/shared/runtime/ services/shared/runtime/
+
+WORKDIR /app/services/shared/contracts
+RUN npm run build
+WORKDIR /app/services/shared/auth-client
+RUN npm run build
+WORKDIR /app/services/shared/runtime
+RUN npm run build
 
 WORKDIR /app/services/fan-out-service
 

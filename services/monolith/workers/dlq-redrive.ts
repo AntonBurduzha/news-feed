@@ -2,6 +2,7 @@ import http from 'node:http';
 import promClient from 'prom-client';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { KafkaTopics } from '@news-feed/contracts';
+import { BackgroundSupervisor } from '@news-feed/runtime';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { dlqMessagesRedrivenTotal } from '@/lib/metrics';
@@ -11,6 +12,15 @@ import { kafkaProducer } from '@/kafka/producer';
 
 const log = logger.child({ service: env.DLQ_REDRIVE_SERVICE_NAME });
 const tracer = trace.getTracer('dlq-redrive');
+const consumer = new KafkaConsumer('dlq-redrive', env.KAFKA_BROKERS, 'dlq-redrive-group');
+
+const backgroundSupervisor = new BackgroundSupervisor({
+	logger: {
+		info: (obj, msg) => log.info(obj, msg),
+		warn: (obj, msg) => log.warn(obj, msg),
+		error: (obj, msg) => log.error(obj, msg),
+	},
+});
 
 function startMetricsServer(port: number): http.Server {
 	const server = http.createServer((req, res) => {
@@ -30,13 +40,7 @@ function startMetricsServer(port: number): http.Server {
 	return server;
 }
 
-const DLQ_REDRIVE_PORT = Number(process.env.DLQ_REDRIVE_PORT ?? 3011);
-
-async function run(): Promise<void> {
-	const metricsServer = startMetricsServer(DLQ_REDRIVE_PORT);
-	log.info('Starting DLQ redrive worker');
-
-	const consumer = new KafkaConsumer('dlq-redrive', env.KAFKA_BROKERS, 'dlq-redrive-group');
+async function startRedriveConsumer(): Promise<void> {
 	await consumer.connect();
 	await kafkaProducer.connect();
 
@@ -93,37 +97,81 @@ async function run(): Promise<void> {
 			}
 		});
 	});
+}
 
-	const disconnectAndExit = async (signal?: string): Promise<void> => {
-		try {
-			log.info({ signal }, 'Shutting down DLQ redrive worker');
-			await consumer.disconnect();
-			await kafkaProducer.disconnect();
-			metricsServer.close();
-		} catch (error) {
-			log.error({ err: normalizeError(error) }, 'Failed to disconnect Kafka consumer');
+async function cleanupKafka(): Promise<void> {
+	const errors: unknown[] = [];
+	try {
+		await consumer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+	try {
+		await kafkaProducer.disconnect();
+	} catch (error) {
+		errors.push(error);
+	}
+	if (errors.length > 0) {
+		throw new AggregateError(errors, 'Kafka cleanup failed');
+	}
+}
+
+async function closeMetricsServer(server: http.Server): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		server.close(error => {
+			if (error) {
+				reject(error);
+				return;
+			}
+			resolve();
+		});
+	});
+}
+
+async function run(): Promise<void> {
+	const metricsServer = startMetricsServer(env.DLQ_REDRIVE_PORT);
+	log.info('Starting DLQ redrive worker');
+
+	backgroundSupervisor.start({
+		name: 'Kafka DLQ consumer',
+		mode: 'once',
+		run: startRedriveConsumer,
+		cleanup: cleanupKafka,
+	});
+
+	const shutdown = async (signal?: NodeJS.Signals, error?: unknown): Promise<void> => {
+		if (backgroundSupervisor.isShuttingDown()) {
+			return;
+		}
+		if (error) {
 			process.exitCode = 1;
+			log.error({ err: normalizeError(error) }, 'Shutting down DLQ redrive worker after error');
+		} else {
+			log.info({ signal }, 'Shutting down DLQ redrive worker');
 		}
 
+		await backgroundSupervisor.stop();
+		await closeMetricsServer(metricsServer).catch(closeError => {
+			process.exitCode = 1;
+			log.error({ err: normalizeError(closeError) }, 'Failed to close metrics server');
+		});
 		if (signal) {
 			process.kill(process.pid, signal);
 		}
 	};
 
 	process.on('unhandledRejection', error => {
-		log.error({ err: normalizeError(error) }, 'Unhandled rejection in DLQ redrive worker');
-		void disconnectAndExit();
+		void shutdown(undefined, error);
 	});
 
 	process.on('uncaughtException', error => {
-		log.error({ err: normalizeError(error) }, 'Uncaught exception in DLQ redrive worker');
-		void disconnectAndExit();
+		void shutdown(undefined, error);
 	});
 
 	const signalTraps: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
 	for (const signal of signalTraps) {
 		process.once(signal, () => {
-			void disconnectAndExit(signal);
+			void shutdown(signal);
 		});
 	}
 }

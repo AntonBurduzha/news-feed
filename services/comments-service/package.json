@@ -18,6 +18,7 @@
 	"dependencies": {
 		"@news-feed/auth-client": "*",
 		"@news-feed/contracts": "*",
+		"@news-feed/runtime": "*",
 		"@opentelemetry/api": "^1.9.1",
 		"@opentelemetry/auto-instrumentations-node": "^0.76.0",
 		"@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",

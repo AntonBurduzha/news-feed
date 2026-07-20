@@ -2,6 +2,7 @@ import { CompressionTypes, type KafkaMessage as IncomingMessage, type Producer }
 import { KafkaTopics } from '@news-feed/contracts';
 import { kafka } from '@/config/kafka';
 import { logger } from '@/lib/logger';
+import { attachConnectionLogging } from '@/lib/kafka-logger';
 
 type KafkaMessage = {
 	key: string;
@@ -21,16 +22,19 @@ class KafkaProducer {
 
 	constructor() {
 		this.producer = kafka.producer();
+		attachConnectionLogging({
+			client: this.producer,
+			logger,
+			clientType: 'producer',
+		});
 	}
 
 	async connect(): Promise<void> {
 		await this.producer.connect();
-		logger.info('Kafka producer connected');
 	}
 
 	async disconnect(): Promise<void> {
 		await this.producer.disconnect();
-		logger.info('Kafka producer disconnected');
 	}
 
 	async sendMessage(topic: string, messages: KafkaMessage[]): Promise<void> {

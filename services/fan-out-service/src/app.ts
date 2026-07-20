@@ -17,7 +17,10 @@ export const authClient = createAuthClient({
 	issuer: env.AUTH_ISSUER,
 	audience: env.AUTH_AUDIENCE,
 	redisUrl: env.REDIS_URL,
-	logger: { error: (obj: Record<string, unknown>, msg: string) => logger.error(obj, msg) },
+	logger: {
+		error: (obj: Record<string, unknown>, msg: string) => logger.error(obj, msg),
+		info: (obj: Record<string, unknown>, msg: string) => logger.info(obj, msg),
+	},
 });
 
 const app = express();

@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { BackgroundSupervisor } from '@news-feed/runtime';
 import app from '@/app';
 import { env } from '@/config/env';
 import { checkPostgresConnection, disconnectPostgres, startPgPoolMetrics } from '@/db/postgres';
@@ -7,12 +8,18 @@ import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 
 let server: Server | undefined;
-let shuttingDown = false;
+
+const backgroundSupervisor = new BackgroundSupervisor({
+	logger: {
+		info: (obj, msg) => logger.info(obj, msg),
+		warn: (obj, msg) => logger.warn(obj, msg),
+		error: (obj, msg) => logger.error(obj, msg),
+	},
+});
 
 async function start(): Promise<void> {
 	await checkPostgresConnection();
 	startPgPoolMetrics();
-	await connectRedis();
 
 	server = app
 		.listen(env.PORT, () => {
@@ -22,20 +29,27 @@ async function start(): Promise<void> {
 			process.exitCode = 1;
 			void shutdown('server_error', error);
 		});
+
+	backgroundSupervisor.start({
+		name: 'Redis',
+		mode: 'once',
+		run: connectRedis,
+		cleanup: disconnectRedis,
+	});
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
-	if (shuttingDown) {
+	if (backgroundSupervisor.isShuttingDown()) {
 		return;
 	}
-
-	shuttingDown = true;
 
 	if (error) {
 		logger.error({ err: normalizeError(error), reason }, 'Shutting down after error');
 	} else {
 		logger.info({ reason }, 'Shutting down');
 	}
+
+	await backgroundSupervisor.stop();
 
 	await new Promise<void>(resolve => {
 		if (!server) {

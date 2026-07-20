@@ -3,6 +3,7 @@ import { trace, context, propagation, SpanKind, SpanStatusCode } from '@opentele
 import { env } from '@/config/env';
 import { kafkaMessagesConsumedTotal, kafkaConsumerProcessingDuration } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
+import { attachConnectionLogging, createKafkaLogCreator } from '@/lib/kafka-logger';
 
 const tracer = trace.getTracer('kafka-consumer');
 
@@ -15,20 +16,25 @@ class KafkaConsumer {
 		this.kafka = new Kafka({
 			clientId,
 			brokers,
-			logLevel: logLevel.INFO,
+			logLevel: logLevel.WARN,
+			logCreator: createKafkaLogCreator(logger),
 		});
 		this.groupId = groupId;
 		this.consumer = this.kafka.consumer({ groupId });
+		attachConnectionLogging({
+			client: this.consumer,
+			logger,
+			clientType: 'consumer',
+			groupId: this.groupId,
+		});
 	}
 
 	async connect(): Promise<void> {
 		await this.consumer.connect();
-		logger.info({ groupId: this.groupId }, 'Kafka consumer connected');
 	}
 
 	async disconnect(): Promise<void> {
 		await this.consumer.disconnect();
-		logger.info({ groupId: this.groupId }, 'Kafka consumer disconnected');
 	}
 
 	async subscribeAndListen(

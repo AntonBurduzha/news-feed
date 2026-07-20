@@ -16,6 +16,7 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {
+		"@news-feed/runtime": "*",
 		"@news-feed/auth-client": "*",
 		"@news-feed/contracts": "*",
 		"@opentelemetry/api": "^1.9.1",

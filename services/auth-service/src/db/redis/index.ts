@@ -5,11 +5,13 @@ import { normalizeError } from '@/lib/errors';
 
 export const redisClient: RedisClientType = createClient({
 	url: env.REDIS_URL,
+	socket: {
+		reconnectStrategy: retries => Math.min(retries * 50, 2_000),
+	},
 });
 
-redisClient.on('error', err => {
-	logger.error({ err }, 'Redis connection error');
-});
+redisClient.on('error', err => logger.error({ err }, 'Redis connection error'));
+redisClient.on('ready', () => logger.info('Redis client ready'));
 
 export async function connectRedis(): Promise<void> {
 	if (!redisClient.isOpen) {

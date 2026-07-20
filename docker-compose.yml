@@ -110,7 +110,7 @@ services:
   #     REDIS_URL: redis://redis:6379
   # AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
   # AUTH_ISSUER: auth-svc
-  # AUTH_AUDIENCE: news-feed
+  # AUTH_AUDIENCE: comments-svc
   #   ports:
   #     - '3001:3001'
   #   depends_on:
