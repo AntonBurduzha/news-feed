@@ -16,6 +16,7 @@ export const authClient = createAuthClient({
 	jwksUrl: env.AUTH_JWKS_URL,
 	issuer: env.AUTH_ISSUER,
 	audience: env.AUTH_AUDIENCE,
+	serviceName: env.SERVICE_NAME,
 	redisUrl: env.REDIS_URL,
 	logger: {
 		error: (obj: Record<string, unknown>, msg: string) => logger.error(obj, msg),

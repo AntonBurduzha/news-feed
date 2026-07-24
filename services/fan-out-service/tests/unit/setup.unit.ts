@@ -2,8 +2,8 @@ import { vi, beforeEach } from 'vitest';
 
 process.env.NODE_ENV = 'test';
 process.env.AUTH_JWKS_URL = 'http://localhost:3001/.well-known/jwks.json';
-process.env.AUTH_ISSUER = 'news-feed-auth';
-process.env.AUTH_AUDIENCE = 'fan-out-svc';
+process.env.AUTH_ISSUER = 'auth-svc';
+process.env.AUTH_AUDIENCE = 'news-feed';
 process.env.KAFKA_NEWS_FEED_SERVICE_CLIENT_ID = 'fan-out-service-test';
 process.env.KAFKA_BROKERS = 'localhost:9092';
 process.env.MONOLITH_URL = 'http://localhost:3000';

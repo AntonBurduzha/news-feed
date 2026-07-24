@@ -23,7 +23,7 @@ const envSchema = z.object({
 	REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
 	AUTH_JWKS_URL: z.string().min(1).default('http://localhost:3002/.well-known/jwks.json'),
 	AUTH_ISSUER: z.string().min(1).default('auth-svc'),
-	AUTH_AUDIENCE: z.string().min(1).default('monolith-svc'),
+	AUTH_AUDIENCE: z.string().min(1).default('news-feed'),
 	INTERNAL_API_KEY: z.string().min(1),
 	KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: z.string().min(5),
 	KAFKA_BROKERS: z.string().optional(),

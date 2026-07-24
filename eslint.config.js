@@ -4,7 +4,13 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
 	{
-		ignores: ['**/dist/**', '**/node_modules/**', '.npm-cache/**', 'eslint.config.js'],
+		ignores: [
+			'**/dist/**',
+			'**/node_modules/**',
+			'**/coverage/**',
+			'.npm-cache/**',
+			'eslint.config.js',
+		],
 	},
 	js.configs.recommended,
 	...tseslint.configs.recommendedTypeChecked,
@@ -33,5 +39,9 @@ export default tseslint.config(
 			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
 			'@typescript-eslint/require-await': 'off',
 		},
+	},
+	{
+		files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
+		extends: [tseslint.configs.disableTypeChecked],
 	},
 );

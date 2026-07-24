@@ -37,6 +37,7 @@ export function createAuthClient(cfg: {
 	issuer: string;
 	audience: string;
 	redisUrl: string;
+	serviceName?: string;
 	logger?: AuthClientLogger;
 }): AuthClient {
 	const jwks = createRemoteJWKSet(new URL(cfg.jwksUrl));
@@ -51,9 +52,10 @@ export function createAuthClient(cfg: {
 	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
 	const logInfo = cfg.logger?.info ?? ((obj, msg) => console.info(msg, obj));
 	const tracer = trace.getTracer('auth-client');
+	const metricLabel = cfg.serviceName ?? cfg.audience;
 
 	redisClient.on('error', err => logError({ err }, 'Redis connection error'));
-	redisClient.on('ready', () => logInfo({}, `Redis client ready for ${cfg.audience}`));
+	redisClient.on('ready', () => logInfo({}, `Redis client ready for ${metricLabel}`));
 	void redisClient.connect().catch(err => {
 		logError({ err }, 'Redis unavailable, skipping auth cache');
 	});
@@ -67,7 +69,7 @@ export function createAuthClient(cfg: {
 					const cached = await redisClient.get(`auth:${token}`);
 					if (cached) {
 						span.addEvent('jwks.cache_hit');
-						redisCacheHitsTotal.inc({ operation: 'verify', service: cfg.audience });
+						redisCacheHitsTotal.inc({ operation: 'verify', service: metricLabel });
 						const ctx = JSON.parse(cached) as UserContext;
 						span.setAttribute('user.id', ctx.userId);
 						span.setAttribute('cache.hit', true);
@@ -77,7 +79,7 @@ export function createAuthClient(cfg: {
 					// Redis down, continue without caching
 				}
 				span.addEvent('jwks.cache_miss', { jwksUrl: cfg.jwksUrl });
-				redisCacheMissesTotal.inc({ operation: 'verify', service: cfg.audience });
+				redisCacheMissesTotal.inc({ operation: 'verify', service: metricLabel });
 				span.setAttribute('cache.hit', false);
 				const { payload } = await jwtVerify(token, jwks, {
 					audience: cfg.audience,
