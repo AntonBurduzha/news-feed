@@ -20,7 +20,9 @@ export const authClient = createAuthClient({
 	redisUrl: env.REDIS_URL,
 	logger: {
 		error: (obj: Record<string, unknown>, msg: string) => logger.error(obj, msg),
+		warn: (obj: Record<string, unknown>, msg: string) => logger.warn(obj, msg),
 		info: (obj: Record<string, unknown>, msg: string) => logger.info(obj, msg),
+		debug: (obj: Record<string, unknown>, msg: string) => logger.debug(obj, msg),
 	},
 });
 

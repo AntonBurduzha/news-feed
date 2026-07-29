@@ -2,8 +2,8 @@ import http from 'node:http';
 import promClient from 'prom-client';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { KafkaTopics } from '@news-feed/contracts';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import { env } from '@/config/env';
+import { createBackgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
 import { logger } from '@/lib/logger';
 import { dlqMessagesRedrivenTotal } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
@@ -14,13 +14,7 @@ const log = logger.child({ service: env.DLQ_REDRIVE_SERVICE_NAME });
 const tracer = trace.getTracer('dlq-redrive');
 const consumer = new KafkaConsumer('dlq-redrive', env.KAFKA_BROKERS, 'dlq-redrive-group');
 
-const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => log.info(obj, msg),
-		warn: (obj, msg) => log.warn(obj, msg),
-		error: (obj, msg) => log.error(obj, msg),
-	},
-});
+const backgroundSupervisor = createBackgroundSupervisor(log);
 
 function startMetricsServer(port: number): http.Server {
 	const server = http.createServer((req, res) => {
@@ -134,10 +128,13 @@ async function run(): Promise<void> {
 
 	backgroundSupervisor.start({
 		name: 'Kafka DLQ consumer',
-		mode: 'once',
 		run: startRedriveConsumer,
+		check: () => consumer.isHealthy(),
+		onUnhealthy: 'restart',
 		cleanup: cleanupKafka,
 	});
+
+	startSupervisorMetrics(backgroundSupervisor, env.DLQ_REDRIVE_SERVICE_NAME);
 
 	const shutdown = async (signal?: NodeJS.Signals, error?: unknown): Promise<void> => {
 		if (backgroundSupervisor.isShuttingDown()) {

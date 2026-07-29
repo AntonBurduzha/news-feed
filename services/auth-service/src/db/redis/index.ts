@@ -1,4 +1,5 @@
 import { createClient, type RedisClientType } from 'redis';
+import { attachRedisLogging } from '@news-feed/runtime';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -10,20 +11,22 @@ export const redisClient: RedisClientType = createClient({
 	},
 });
 
-redisClient.on('error', err => logger.error({ err }, 'Redis connection error'));
-redisClient.on('ready', () => logger.info('Redis client ready'));
+attachRedisLogging(redisClient, logger, { component: env.SERVICE_NAME });
 
 export async function connectRedis(): Promise<void> {
 	if (!redisClient.isOpen) {
 		await redisClient.connect();
 	}
-	logger.info('Redis connected');
 }
 
 export async function disconnectRedis(): Promise<void> {
 	if (redisClient.isOpen) {
 		await redisClient.quit();
 	}
+}
+
+export function isRedisHealthy(): boolean {
+	return redisClient.isReady;
 }
 
 export async function cacheToken(token: string, userId: string, ttlSeconds: number): Promise<void> {

@@ -1,22 +1,14 @@
 import type { Server } from 'node:http';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { db, checkPostgresConnection, startPgPoolMetrics } from '@/db/postgres';
 // import { initPostgresDB, dropPostgresDB } from '@/db/postgres/init-postgres-db';
 import { kafkaAdmin } from '@/kafka/admin';
+import { backgroundSupervisor, startMonolithSupervisorMetrics } from '@/lib/background-supervisor';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 
 let server: Server | undefined;
-
-const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	},
-});
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
 	if (backgroundSupervisor.isShuttingDown()) {
@@ -42,7 +34,6 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Auth client', () => authClient.disconnect()],
-		['Kafka admin', () => kafkaAdmin.disconnect()],
 		['Postgres pool', () => db.end()],
 	];
 	for (const [label, close] of disposables) {
@@ -69,10 +60,11 @@ async function start(): Promise<void> {
 
 	backgroundSupervisor.start({
 		name: 'Kafka admin',
-		mode: 'once',
 		run: () => kafkaAdmin.connect(),
 		cleanup: () => kafkaAdmin.disconnect(),
 	});
+
+	startMonolithSupervisorMetrics();
 }
 
 process.on('uncaughtException', error => {

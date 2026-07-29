@@ -1,7 +1,7 @@
 import { Kafka, logLevel } from 'kafkajs';
 import { env } from './env';
 import { logger } from '@/lib/logger';
-import { createKafkaLogCreator } from '@/lib/kafka-logger';
+import { createKafkaLogCreator } from '@news-feed/runtime';
 
 export const kafka = new Kafka({
 	clientId: env.KAFKA_NEWS_FEED_SERVICE_CLIENT_ID,

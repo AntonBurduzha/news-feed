@@ -19,12 +19,20 @@ vi.mock('@news-feed/auth-client', () => ({
 	}),
 }));
 
+type PostsPage = { posts: Post[]; nextCursor: string | null };
+
 let app: import('express').Express;
 let db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> };
+let internalApiKey: string;
+
+function createPost(content: string) {
+	return request(app).post('/posts').send({ userId: USER_ID, content }).expect(201);
+}
 
 beforeAll(async () => {
 	({ db } = await import('@/db/postgres'));
 	app = await getTestApp();
+	internalApiKey = process.env.INTERNAL_API_KEY as string;
 
 	await db.query(`INSERT INTO users (id, name, email, password_hash) VALUES ($1, $2, $3, $4)`, [
 		USER_ID,
@@ -86,23 +94,73 @@ describe('Posts integration tests', () => {
 		});
 	});
 
-	describe('GET /posts', () => {
-		test('returns posts for the user', async () => {
-			await request(app).post('/posts').send({ userId: USER_ID, content: 'p1' }).expect(201);
+	describe('POST /internal/posts/by-authors', () => {
+		test('returns the posts written by the given authors', async () => {
+			await createPost('p1');
+			await createPost('p2');
 
-			const response: { body: { posts: Post[]; nextCursor: string | null } } = await request(app)
-				.get('/posts')
-				.query({ userId: USER_ID, limit: 10 })
+			const response: { body: PostsPage } = await request(app)
+				.post('/internal/posts/by-authors')
+				.set('x-internal-api-key', internalApiKey)
+				.send({ ids: [USER_ID], limit: 10 })
 				.expect(200);
 
-			expect(response.body.posts).toHaveLength(1);
-			expect(response.body.posts[0].content).toBe('p1');
+			expect(response.body.posts.map(post => post.content).sort()).toEqual(['p1', 'p2']);
+			expect(response.body.nextCursor).toBeNull();
 		});
 
-		test('throws ValidationError when userId is missing', async () => {
+		test('returns an empty page when the authors have no posts', async () => {
+			await createPost('p1');
+
+			const response: { body: PostsPage } = await request(app)
+				.post('/internal/posts/by-authors')
+				.set('x-internal-api-key', internalApiKey)
+				.send({ ids: [MISSING_USER_ID] })
+				.expect(200);
+
+			expect(response.body.posts).toHaveLength(0);
+			expect(response.body.nextCursor).toBeNull();
+		});
+
+		test('walks the whole author timeline through the cursor', async () => {
+			await createPost('p1');
+			await createPost('p2');
+
+			const firstPage: { body: PostsPage } = await request(app)
+				.post('/internal/posts/by-authors')
+				.set('x-internal-api-key', internalApiKey)
+				.send({ ids: [USER_ID], limit: 1 })
+				.expect(200);
+
+			expect(firstPage.body.posts).toHaveLength(1);
+			expect(firstPage.body.nextCursor).toEqual(expect.any(String));
+
+			const secondPage: { body: PostsPage } = await request(app)
+				.post('/internal/posts/by-authors')
+				.set('x-internal-api-key', internalApiKey)
+				.send({ ids: [USER_ID], limit: 1, cursor: firstPage.body.nextCursor })
+				.expect(200);
+
+			expect(secondPage.body.posts).toHaveLength(1);
+			expect(secondPage.body.nextCursor).toBeNull();
+
+			const paged = [...firstPage.body.posts, ...secondPage.body.posts];
+			expect(paged.map(post => post.content).sort()).toEqual(['p1', 'p2']);
+		});
+
+		test('rejects a request without the internal api key', async () => {
 			const response: { body: { error: string } } = await request(app)
-				.get('/posts')
-				.query({ limit: 10 })
+				.post('/internal/posts/by-authors')
+				.send({ ids: [USER_ID] })
+				.expect(401);
+			expect(response.body.error).toBe('Invalid internal key');
+		});
+
+		test('throws ValidationError when the author ids are not uuids', async () => {
+			const response: { body: { error: string } } = await request(app)
+				.post('/internal/posts/by-authors')
+				.set('x-internal-api-key', internalApiKey)
+				.send({ ids: ['not-a-uuid'] })
 				.expect(400);
 			expect(response.body.error).toBe('Validation failed');
 		});

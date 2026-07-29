@@ -11,7 +11,6 @@ vi.mock('@/db/postgres', () => ({
 }));
 vi.mock('@/modules/posts/posts.repository', () => ({
 	postsRepository: {
-		findAll: vi.fn(),
 		findById: vi.fn(),
 		create: vi.fn(),
 		update: vi.fn(),

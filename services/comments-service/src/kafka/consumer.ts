@@ -3,7 +3,7 @@ import { trace, context, propagation, SpanKind, SpanStatusCode } from '@opentele
 import { env } from '@/config/env';
 import { kafkaMessagesConsumedTotal, kafkaConsumerProcessingDuration } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
-import { attachConnectionLogging, createKafkaLogCreator } from '@/lib/kafka-logger';
+import { attachConnectionLogging, createKafkaLogCreator } from '@news-feed/runtime';
 
 const tracer = trace.getTracer('kafka-consumer');
 
@@ -11,6 +11,7 @@ class KafkaConsumer {
 	private readonly kafka: Kafka;
 	private readonly consumer: Consumer;
 	private readonly groupId: string;
+	private fatallyCrashed: boolean = false;
 
 	constructor(clientId: string, brokers: string[], groupId: string) {
 		this.kafka = new Kafka({
@@ -27,14 +28,24 @@ class KafkaConsumer {
 			clientType: 'consumer',
 			groupId: this.groupId,
 		});
+		this.consumer.on(this.consumer.events.CRASH, ({ payload }) => {
+			if (!payload.restart) {
+				this.fatallyCrashed = true;
+			}
+		});
 	}
 
 	async connect(): Promise<void> {
+		this.fatallyCrashed = false;
 		await this.consumer.connect();
 	}
 
 	async disconnect(): Promise<void> {
 		await this.consumer.disconnect();
+	}
+
+	isHealthy(): boolean {
+		return !this.fatallyCrashed;
 	}
 
 	async subscribeAndListen(
@@ -43,7 +54,7 @@ class KafkaConsumer {
 	): Promise<void> {
 		await this.consumer.subscribe({ topics, fromBeginning: false });
 
-		logger.info({ topics, groupId: this.groupId }, 'Consumer subscribed to topics');
+		logger.info({ topics, groupId: this.groupId }, 'Kafka consumer subscribed');
 
 		await this.consumer.run({
 			eachMessage: async (payload: EachMessagePayload) => {

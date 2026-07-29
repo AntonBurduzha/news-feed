@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import { asyncHandler } from '@/lib/async-handler';
+import { backgroundSupervisor } from '@/lib/background-supervisor';
 
 const router = Router();
 
@@ -12,14 +12,16 @@ router.get('/healthz', (_req, res) => {
 	});
 });
 
-router.get(
-	'/readyz',
-	asyncHandler(async (_req, res) => {
-		if (mongoose.connection.readyState !== mongoose.ConnectionStates.connected) {
-			throw new Error('MongoDB is not connected');
-		}
-		res.json({ status: 'ready' });
-	}),
-);
+router.get('/readyz', (_req, res) => {
+	const services = backgroundSupervisor.getStatuses();
+	const mongoUp = mongoose.connection.readyState === mongoose.ConnectionStates.connected;
+	const ready = mongoUp && Object.values(services).every(status => status === 'running');
+
+	res.status(ready ? 200 : 503).json({
+		status: ready ? 'ready' : 'degraded',
+		services,
+		dependencies: { MongoDB: mongoUp ? 'up' : 'down' },
+	});
+});
 
 export default router;

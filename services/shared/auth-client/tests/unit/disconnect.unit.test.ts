@@ -28,11 +28,12 @@ describe('createAuthClient.disconnect', () => {
 
 	test('logs disconnect errors via injected logger', async () => {
 		const logError = vi.fn();
+		const logWarn = vi.fn();
 		const logInfo = vi.fn();
 		mockClient.quit.mockRejectedValueOnce(new Error('quit failed'));
 		const client = createAuthClient({
 			...defaultAuthClientCfg,
-			logger: { error: logError, info: logInfo },
+			logger: { error: logError, warn: logWarn, info: logInfo },
 		});
 
 		await client.disconnect();

@@ -1,25 +1,16 @@
 import type { Server } from 'node:http';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
-
-export const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	},
-});
-
+import { backgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
 import { normalizeError } from '@/lib/errors';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
 import { KafkaTopics } from '@news-feed/contracts';
 import { withRetry } from '@/lib/retry';
 import { dlqMessagesTotal } from '@/lib/metrics';
-import { connectRedis, disconnectRedis } from './db/redis';
+import { connectRedis, disconnectRedis, isRedisHealthy } from './db/redis';
 import {
 	onFollowChanged,
 	onPostCreated,
@@ -138,17 +129,20 @@ async function start(): Promise<void> {
 		});
 	backgroundSupervisor.start({
 		name: 'Redis',
-		mode: 'once',
 		run: connectRedis,
+		check: isRedisHealthy,
+		onUnhealthy: 'report',
 		cleanup: disconnectRedis,
 	});
 
 	backgroundSupervisor.start({
 		name: 'Kafka consumer',
-		mode: 'once',
 		run: startConsumer,
+		check: () => consumer.isHealthy(),
+		onUnhealthy: 'restart',
 		cleanup: cleanupKafka,
 	});
+	startSupervisorMetrics();
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
@@ -171,8 +165,6 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Auth client', () => authClient.disconnect()],
-		['Kafka', () => cleanupKafka()],
-		['Redis', () => disconnectRedis()],
 	];
 	for (const [label, close] of disposables) {
 		await close().catch(err =>

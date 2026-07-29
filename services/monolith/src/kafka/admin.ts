@@ -2,7 +2,7 @@ import type { Admin } from 'kafkajs';
 import { KafkaTopics } from '@news-feed/contracts';
 import { kafka } from '@/config/kafka';
 import { logger } from '@/lib/logger';
-import { attachConnectionLogging } from '@/lib/kafka-logger';
+import { attachConnectionLogging } from '@news-feed/runtime';
 
 class KafkaAdmin {
 	private readonly admin: Admin;

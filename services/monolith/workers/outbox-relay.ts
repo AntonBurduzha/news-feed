@@ -1,10 +1,10 @@
 import http from 'node:http';
 import promClient from 'prom-client';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import { env } from '@/config/env';
 import { checkPostgresConnection, db, startPgPoolMetrics } from '@/db/postgres';
 import { kafkaProducer } from '@/kafka/producer';
+import { createBackgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
 import { logger } from '@/lib/logger';
 import {
 	outboxPendingMessages,
@@ -21,13 +21,7 @@ let outboxRelayInterval: NodeJS.Timeout | null = null;
 let inFlightBatch: Promise<void> | null = null;
 const tracer = trace.getTracer('outbox-relay');
 
-const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => log.info(obj, msg),
-		warn: (obj, msg) => log.warn(obj, msg),
-		error: (obj, msg) => log.error(obj, msg),
-	},
-});
+const backgroundSupervisor = createBackgroundSupervisor(log);
 
 function startMetricsServer(port: number): http.Server {
 	const server = http.createServer((req, res) => {
@@ -157,10 +151,11 @@ async function run(): Promise<void> {
 
 	backgroundSupervisor.start({
 		name: 'Kafka producer and outbox',
-		mode: 'once',
 		run: startRelayLoop,
 		cleanup: stopRelayLoop,
 	});
+
+	startSupervisorMetrics(backgroundSupervisor, env.OUTBOX_RELAY_SERVICE_NAME);
 
 	const shutdown = async (signal?: NodeJS.Signals, error?: unknown): Promise<void> => {
 		if (backgroundSupervisor.isShuttingDown()) {

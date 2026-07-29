@@ -1,21 +1,13 @@
 import type { Server } from 'node:http';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import app from '@/app';
 import { env } from '@/config/env';
 import { checkPostgresConnection, disconnectPostgres, startPgPoolMetrics } from '@/db/postgres';
-import { connectRedis, disconnectRedis } from '@/db/redis';
+import { connectRedis, disconnectRedis, isRedisHealthy } from '@/db/redis';
+import { backgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 
 let server: Server | undefined;
-
-const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	},
-});
 
 async function start(): Promise<void> {
 	await checkPostgresConnection();
@@ -32,10 +24,13 @@ async function start(): Promise<void> {
 
 	backgroundSupervisor.start({
 		name: 'Redis',
-		mode: 'once',
 		run: connectRedis,
+		check: isRedisHealthy,
+		onUnhealthy: 'report',
 		cleanup: disconnectRedis,
 	});
+
+	startSupervisorMetrics();
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
@@ -60,7 +55,6 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 	});
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
-		['Redis', () => disconnectRedis()],
 		['Postgres pool', () => disconnectPostgres()],
 	];
 	for (const [label, close] of disposables) {

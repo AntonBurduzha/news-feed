@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { trace } from '@opentelemetry/api';
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -33,21 +32,6 @@ function slimAccessResSerializer(res: SerializedHttpRes) {
 	return res.statusCode;
 }
 
-function getTraceLogFields(): { traceId?: string; spanId?: string } {
-	const spanContext = trace.getActiveSpan()?.spanContext();
-	if (
-		spanContext == null ||
-		spanContext.traceId === '00000000000000000000000000000000' ||
-		spanContext.spanId === '0000000000000000'
-	) {
-		return {};
-	}
-	return {
-		traceId: spanContext.traceId,
-		spanId: spanContext.spanId,
-	};
-}
-
 const baseOptions = {
 	level: env.LOG_LEVEL,
 	base: {
@@ -56,7 +40,6 @@ const baseOptions = {
 	mixin: () => ({
 		correlationId: requestContext.getStore()?.correlationId,
 		userId: requestContext.getStore()?.userId ?? 'anon',
-		...getTraceLogFields(),
 	}),
 	formatters: {
 		level(label: string) {

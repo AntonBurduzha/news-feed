@@ -1,12 +1,12 @@
 import type { Server } from 'node:http';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { KafkaTopics } from '@news-feed/contracts';
-import { BackgroundSupervisor } from '@news-feed/runtime';
 import app, { authClient } from '@/app';
 import { env } from '@/config/env';
 import { connectMongo, disconnectMongo, startMongoPoolMetrics } from '@/db/mongo';
 import KafkaConsumer from '@/kafka/consumer';
 import { kafkaProducer } from '@/kafka/producer';
+import { backgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
 import { dlqMessagesTotal } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -15,14 +15,6 @@ import { commentsService } from '@/modules/comments/comments.service';
 import { postsProjectionService } from '@/modules/posts-projection/posts-projection.service';
 
 let server: Server | undefined;
-
-const backgroundSupervisor = new BackgroundSupervisor({
-	logger: {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	},
-});
 
 const consumer = new KafkaConsumer(
 	'comments-svc-consumer',
@@ -141,10 +133,13 @@ async function start(): Promise<void> {
 
 	backgroundSupervisor.start({
 		name: 'Kafka consumer',
-		mode: 'once',
 		run: startKafkaConsumer,
+		check: () => consumer.isHealthy(),
+		onUnhealthy: 'restart',
 		cleanup: cleanupKafka,
 	});
+
+	startSupervisorMetrics();
 }
 
 async function shutdown(reason: string, error?: unknown): Promise<void> {
@@ -170,7 +165,6 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Auth client', () => authClient.disconnect()],
-		['Kafka', () => cleanupKafka()],
 		['MongoDB connection', () => disconnectMongo()],
 	];
 	for (const [label, close] of disposables) {

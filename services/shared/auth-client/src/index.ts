@@ -2,6 +2,7 @@ import type { Request, RequestHandler } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { attachRedisLogging } from '@news-feed/runtime';
 import client from 'prom-client';
 
 export type UserContext = {
@@ -29,7 +30,9 @@ export const redisCacheMissesTotal = new client.Counter({
 
 export type AuthClientLogger = {
 	error: (obj: Record<string, unknown>, msg: string) => void;
+	warn: (obj: Record<string, unknown>, msg: string) => void;
 	info: (obj: Record<string, unknown>, msg: string) => void;
+	debug?: (obj: Record<string, unknown>, msg: string) => void;
 };
 
 export function createAuthClient(cfg: {
@@ -49,15 +52,19 @@ export function createAuthClient(cfg: {
 			reconnectStrategy: retries => Math.min(retries * 50, 2000),
 		},
 	});
-	const logError = cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj));
-	const logInfo = cfg.logger?.info ?? ((obj, msg) => console.info(msg, obj));
+	const log: Required<Pick<AuthClientLogger, 'error' | 'warn' | 'info'>> &
+		Pick<AuthClientLogger, 'debug'> = {
+		error: cfg.logger?.error ?? ((obj, msg) => console.error(msg, obj)),
+		warn: cfg.logger?.warn ?? ((obj, msg) => console.warn(msg, obj)),
+		info: cfg.logger?.info ?? ((obj, msg) => console.info(msg, obj)),
+		debug: cfg.logger?.debug,
+	};
 	const tracer = trace.getTracer('auth-client');
 	const metricLabel = cfg.serviceName ?? cfg.audience;
 
-	redisClient.on('error', err => logError({ err }, 'Redis connection error'));
-	redisClient.on('ready', () => logInfo({}, `Redis client ready for ${metricLabel}`));
-	void redisClient.connect().catch(err => {
-		logError({ err }, 'Redis unavailable, skipping auth cache');
+	attachRedisLogging(redisClient, log, { component: `auth-client:${metricLabel}` });
+	void redisClient.connect().catch(() => {
+		// INFO: Redis connection failed, will retry
 	});
 
 	async function verify(bearer: string): Promise<UserContext> {
@@ -129,7 +136,7 @@ export function createAuthClient(cfg: {
 
 	async function disconnect(): Promise<void> {
 		await redisClient.quit().catch(err => {
-			logError({ err }, 'Redis disconnect error');
+			log.error({ err }, 'Redis disconnect error');
 		});
 	}
 

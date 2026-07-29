@@ -21,6 +21,7 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@news-feed/runtime": "*",
 		"@opentelemetry/api": "^1.9.1",
 		"jose": "^6.2.3",
 		"redis": "^5.12.1"

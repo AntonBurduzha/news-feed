@@ -14,19 +14,6 @@ export default defineConfig({
 					setupFiles: ['./tests/unit/setup.unit.ts'],
 				},
 			},
-			{
-				extends: true,
-				test: {
-					name: 'integration',
-					include: ['tests/integration/**/*.int.test.ts'],
-					setupFiles: ['./tests/integration/setup.int.ts'],
-					globalSetup: ['./tests/integration/redis-setup.ts'],
-					pool: 'forks',
-					maxWorkers: 1,
-					testTimeout: 60_000,
-					hookTimeout: 90_000,
-				},
-			},
 		],
 		coverage: {
 			provider: 'v8',

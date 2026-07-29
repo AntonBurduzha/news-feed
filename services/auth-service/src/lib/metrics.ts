@@ -41,3 +41,9 @@ export const pgPoolConnections = new client.Gauge({
 	help: 'Postgres connection pool state',
 	labelNames: ['state', 'service'] as const,
 });
+
+export const backgroundServiceUp = new client.Gauge({
+	name: 'background_service_up',
+	help: '1 when a supervised background service is running, 0 otherwise',
+	labelNames: ['background_service', 'service'] as const,
+});

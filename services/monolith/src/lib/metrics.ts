@@ -105,3 +105,9 @@ export const kafkaConsumerProcessingDuration = new client.Histogram({
 	labelNames: ['topic', 'consumer_group', 'service'] as const,
 	buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 30],
 });
+
+export const backgroundServiceUp = new client.Gauge({
+	name: 'background_service_up',
+	help: '1 when a supervised background service is running, 0 otherwise',
+	labelNames: ['background_service', 'service'] as const,
+});

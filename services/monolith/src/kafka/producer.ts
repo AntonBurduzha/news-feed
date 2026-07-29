@@ -1,8 +1,13 @@
-import { CompressionTypes, type KafkaMessage as IncomingMessage, type Producer } from 'kafkajs';
+import {
+	CompressionTypes,
+	Partitioners,
+	type KafkaMessage as IncomingMessage,
+	type Producer,
+} from 'kafkajs';
 import { KafkaTopics } from '@news-feed/contracts';
 import { kafka } from '@/config/kafka';
 import { logger } from '@/lib/logger';
-import { attachConnectionLogging } from '@/lib/kafka-logger';
+import { attachConnectionLogging } from '@news-feed/runtime';
 
 type KafkaMessage = {
 	key: string;
@@ -21,7 +26,7 @@ class KafkaProducer {
 	private readonly producer: Producer;
 
 	constructor() {
-		this.producer = kafka.producer();
+		this.producer = kafka.producer({ createPartitioner: Partitioners.DefaultPartitioner });
 		attachConnectionLogging({
 			client: this.producer,
 			logger,
