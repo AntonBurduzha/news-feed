@@ -226,6 +226,10 @@ The defaults work out of the box for local development. `.env` files are gitigno
 docker compose up -d          # Kafka + Zookeeper, Postgres, MongoDB, Redis, exporters
 ```
 
+Use `docker compose stop` / `start` between sessions rather than `down`. Note that
+`docker volume prune` is unsafe while the stack is down — the named volumes holding
+Postgres, MongoDB and Redis data count as dangling once no container is attached.
+
 ### 3. Run migrations
 
 ```sh

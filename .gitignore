@@ -17,7 +17,7 @@ yarn-error.log*
 /*.todo
 
 # Learning
-/docs
+/docs/*
 
 # Logs
 /logs
