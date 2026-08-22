@@ -1,32 +1,54 @@
-FROM node:22-alpine AS deps
-
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false
 
+
+FROM base AS deps
 COPY package.json package-lock.json ./
-COPY services/monolith/package.json services/monolith/package.json
-COPY services/auth-service/package.json services/auth-service/package.json
-COPY services/comments-service/package.json services/comments-service/package.json
-COPY services/shared/contracts/package.json services/shared/contracts/package.json
-COPY services/shared/runtime/package.json services/shared/runtime/package.json
+COPY services/monolith/package.json           services/monolith/package.json
+COPY services/auth-service/package.json       services/auth-service/package.json
+COPY services/comments-service/package.json   services/comments-service/package.json
+COPY services/fan-out-service/package.json    services/fan-out-service/package.json
+COPY services/shared/contracts/package.json   services/shared/contracts/package.json
+COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY services/shared/runtime/package.json     services/shared/runtime/package.json
+RUN --mount=type=cache,target=/root/.npm npm ci
 
-RUN npm ci
 
-FROM node:22-alpine AS app
-
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
-
+FROM deps AS build
 COPY tsconfig.base.json ./
-COPY services/auth-service/ services/auth-service/
-COPY services/shared/contracts/ services/shared/contracts/
-COPY services/shared/runtime/ services/shared/runtime/
+COPY services/shared/runtime/       services/shared/runtime/
+COPY services/auth-service/         services/auth-service/
+RUN npm run build --workspace services/shared/runtime \
+ && npm run build --workspace services/auth-service
 
-WORKDIR /app/services/shared/runtime
-RUN npm run build
 
+FROM base AS prod-deps
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+COPY services/monolith/package.json           services/monolith/package.json
+COPY services/auth-service/package.json       services/auth-service/package.json
+COPY services/comments-service/package.json   services/comments-service/package.json
+COPY services/fan-out-service/package.json    services/fan-out-service/package.json
+COPY services/shared/contracts/package.json   services/shared/contracts/package.json
+COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY services/shared/runtime/package.json     services/shared/runtime/package.json
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
+
+FROM base AS runner
+ENV NODE_ENV=production \
+    NODE_OPTIONS=--enable-source-maps
+
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/package.json ./package.json
+COPY --from=build /app/services/shared/runtime/package.json     services/shared/runtime/package.json
+COPY --from=build /app/services/shared/runtime/dist             services/shared/runtime/dist
+COPY --from=build /app/services/auth-service/package.json       services/auth-service/package.json
+COPY --from=build /app/services/auth-service/dist/src           services/auth-service/dist/src
+
+USER node
 WORKDIR /app/services/auth-service
-
 EXPOSE 3002
-
-CMD ["npx", "tsx", "--import", "./src/lib/tracing.ts", "src/index.ts"]
+CMD ["node", "--import", "./dist/src/lib/tracing.js", "dist/src/index.js"]

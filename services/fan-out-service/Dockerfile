@@ -1,34 +1,64 @@
-FROM node:22-alpine AS deps
-
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false
+
+
+FROM base AS deps
 COPY package.json package-lock.json ./
-COPY services/monolith/package.json services/monolith/package.json
-COPY services/comments-service/package.json services/comments-service/package.json
-COPY services/auth-service/package.json services/auth-service/package.json
-COPY services/fan-out-service/package.json services/fan-out-service/package.json
-COPY services/shared/contracts/package.json services/shared/contracts/package.json
+COPY services/monolith/package.json           services/monolith/package.json
+COPY services/auth-service/package.json       services/auth-service/package.json
+COPY services/comments-service/package.json   services/comments-service/package.json
+COPY services/fan-out-service/package.json    services/fan-out-service/package.json
+COPY services/shared/contracts/package.json   services/shared/contracts/package.json
 COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
-COPY services/shared/runtime/package.json services/shared/runtime/package.json
-RUN npm ci
+COPY services/shared/runtime/package.json     services/shared/runtime/package.json
+RUN --mount=type=cache,target=/root/.npm npm ci
 
-FROM node:22-alpine AS app
 
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+FROM deps AS build
 COPY tsconfig.base.json ./
-COPY services/fan-out-service/ services/fan-out-service/
-COPY services/shared/contracts/ services/shared/contracts/
+COPY services/shared/contracts/   services/shared/contracts/
+COPY services/shared/runtime/     services/shared/runtime/
 COPY services/shared/auth-client/ services/shared/auth-client/
-COPY services/shared/runtime/ services/shared/runtime/
+COPY services/fan-out-service/   services/fan-out-service/
+RUN npm run build --workspace services/shared/contracts \
+ && npm run build --workspace services/shared/runtime \
+ && npm run build --workspace services/shared/auth-client \
+ && npm run build --workspace services/fan-out-service
 
-WORKDIR /app/services/shared/contracts
-RUN npm run build
-WORKDIR /app/services/shared/auth-client
-RUN npm run build
-WORKDIR /app/services/shared/runtime
-RUN npm run build
 
+FROM base AS prod-deps
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+COPY services/monolith/package.json           services/monolith/package.json
+COPY services/auth-service/package.json       services/auth-service/package.json
+COPY services/comments-service/package.json   services/comments-service/package.json
+COPY services/fan-out-service/package.json    services/fan-out-service/package.json
+COPY services/shared/contracts/package.json   services/shared/contracts/package.json
+COPY services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY services/shared/runtime/package.json     services/shared/runtime/package.json
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
+
+FROM base AS runner
+ENV NODE_ENV=production \
+    NODE_OPTIONS=--enable-source-maps
+
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/package.json ./package.json
+
+COPY --from=build /app/services/shared/contracts/package.json   services/shared/contracts/package.json
+COPY --from=build /app/services/shared/contracts/dist           services/shared/contracts/dist
+COPY --from=build /app/services/shared/runtime/package.json     services/shared/runtime/package.json
+COPY --from=build /app/services/shared/runtime/dist             services/shared/runtime/dist
+COPY --from=build /app/services/shared/auth-client/package.json services/shared/auth-client/package.json
+COPY --from=build /app/services/shared/auth-client/dist         services/shared/auth-client/dist
+
+COPY --from=build /app/services/fan-out-service/package.json services/fan-out-service/package.json
+COPY --from=build /app/services/fan-out-service/dist/src     services/fan-out-service/dist/src
+
+USER node
 WORKDIR /app/services/fan-out-service
-
 EXPOSE 3004
-CMD ["npx", "tsx", "--import", "./src/lib/tracing.ts", "src/index.ts"]
+CMD ["node", "--import", "./dist/src/lib/tracing.js", "dist/src/index.js"]

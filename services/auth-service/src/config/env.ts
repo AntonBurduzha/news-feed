@@ -18,6 +18,8 @@ const envSchema = z.object({
 	REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
 	JWT_ISSUER: z.string().min(1).default('auth-svc'),
 	JWT_AUDIENCE: z.string().min(1).default('news-feed'),
+	SHUTDOWN_DRAIN_MS: z.number().nonnegative().default(5000),
+	SHUTDOWN_TIMEOUT_MS: z.number().nonnegative().default(10_000),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

@@ -14,7 +14,7 @@
 		"dev:comments": "npm --workspace services/comments-service run dev 2>&1 | tee logs/comments-svc.log",
 		"dev:auth": "npm --workspace services/auth-service run dev 2>&1 | tee logs/auth-svc.log",
 		"dev:fan-out": "npm --workspace services/fan-out-service run dev 2>&1 | tee logs/fan-out-svc.log",
-		"build": "npm run build --workspaces",
+		"build": "npm run build --workspace services/shared/contracts && npm run build --workspace services/shared/runtime && npm run build --workspace services/shared/auth-client && npm run build --workspace services/monolith && npm run build --workspace services/auth-service && npm run build --workspace services/comments-service && npm run build --workspace services/fan-out-service",
 		"typecheck": "npm run typecheck --workspaces",
 		"lint": "npm run lint --workspaces",
 		"format": "prettier --write \"services/**/*.ts\" \"*.ts\" \"eslint.config.js\"",

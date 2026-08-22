@@ -111,7 +111,7 @@
 						"uid": "mimir"
 					},
 					"editorMode": "code",
-					"expr": "rate(nodejs_process_cpu_seconds_total{service=\"$service\"}[5m]) * 100",
+					"expr": "rate(process_cpu_seconds_total{service=\"$service\"}[5m]) * 100",
 					"instant": false,
 					"legendFormat": "{{service}}",
 					"range": true,
@@ -204,7 +204,7 @@
 						"uid": "mimir"
 					},
 					"editorMode": "code",
-					"expr": "nodejs_process_resident_memory_bytes{service=\"$service\"} / 1024 / 1024",
+					"expr": "process_resident_memory_bytes{service=\"$service\"} / 1024 / 1024",
 					"instant": false,
 					"legendFormat": "{{service}}",
 					"range": true,
@@ -297,7 +297,7 @@
 						"uid": "mimir"
 					},
 					"editorMode": "code",
-					"expr": "nodejs_nodejs_heap_size_used_bytes{service=\"$service\"} / 1024 / 1024",
+					"expr": "nodejs_heap_size_used_bytes{service=\"$service\"} / 1024 / 1024",
 					"instant": false,
 					"legendFormat": "used",
 					"range": true,
@@ -309,7 +309,7 @@
 						"uid": "mimir"
 					},
 					"editorMode": "code",
-					"expr": "nodejs_nodejs_heap_size_total_bytes{service=\"$service\"} / 1024 / 1024",
+					"expr": "nodejs_heap_size_total_bytes{service=\"$service\"} / 1024 / 1024",
 					"hide": false,
 					"instant": false,
 					"legendFormat": "total",
@@ -407,7 +407,7 @@
 						"uid": "mimir"
 					},
 					"editorMode": "code",
-					"expr": "nodejs_nodejs_eventloop_lag_seconds{service=\"$service\"}",
+					"expr": "nodejs_eventloop_lag_seconds{service=\"$service\"}",
 					"instant": false,
 					"legendFormat": "{{service}}",
 					"range": true,

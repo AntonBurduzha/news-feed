@@ -1,4 +1,26 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/snippets:/etc/nginx/snippets:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      auth-service: { condition: service_healthy }
+      monolith: { condition: service_healthy }
+      comments-service: { condition: service_healthy }
+      fan-out-service: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   zookeeper:
     image: wurstmeister/zookeeper:latest@sha256:7a7fd44a72104bfbd24a77844bad5fabc86485b036f988ea927d1780782a6680
     platform: linux/amd64
@@ -53,6 +75,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB_NAME}
     ports:
       - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_DB_USER} -d ${POSTGRES_DB_NAME}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -73,6 +100,11 @@ services:
       MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
     ports:
       - '27017:27017'
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - mongodb_data:/data/db
 
@@ -100,44 +132,191 @@ services:
     volumes:
       - redis_data:/data
 
-  # comments-service:
-  #   build:
-  #     context: .
-  #     dockerfile: services/comments-service/Dockerfile
-  #   env_file: .env
-  #   environment:
-  #     PORT: 3001
-  #     NODE_ENV: production
-  #     SERVICE_NAME: comments-svc
-  #     KAFKA_BROKERS: kafka:9092
-  #     KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: comments-svc
-  #     MONGO_DB_HOST: mongodb
-  #     REDIS_URL: redis://redis:6379
-  # AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
-  # AUTH_ISSUER: auth-svc
-  # AUTH_AUDIENCE: news-feed
-  #   ports:
-  #     - '3001:3001'
-  #   depends_on:
-  #     - kafka
-  #     - mongodb
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    image: news-feed/auth-service:local
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    expose: ['3002']
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      SERVICE_NAME: auth-svc
+      LOG_LEVEL: info
+      POSTGRES_DB_HOST: postgres
+      POSTGRES_DB_PORT: 5432
+      POSTGRES_DB_USER: ${POSTGRES_DB_USER}
+      POSTGRES_DB_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      REDIS_URL: redis://redis:6379
+      JWT_ISSUER: auth-svc
+      JWT_AUDIENCE: news-feed
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_SERVICE_NAME: auth-svc
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M }
 
-  # auth-service:
-  #   build:
-  #     context: .
-  #     dockerfile: services/auth-service/Dockerfile
-  #   env_file: .env
-  #   environment:
-  #     PORT: 3002
-  #     NODE_ENV: production
-  #     SERVICE_NAME: auth-svc
-  #     POSTGRES_DB_HOST: postgres
-  #     POSTGRES_DB_PORT: 5432
-  #     REDIS_URL: redis://redis:6379
-  #     JWT_ISSUER: auth-svc
-  #     JWT_AUDIENCE: news-feed
-  #   ports:
-  #     - '3002:3002'
+  monolith:
+    build: { context: ., dockerfile: services/monolith/Dockerfile }
+    image: news-feed/monolith:local
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    expose: ['3000']
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SERVICE_NAME: news-feed-monolith
+      COMMENTS_SVC_URL: http://comments-service:3001
+      POSTGRES_DB_HOST: postgres
+      POSTGRES_DB_USER: ${POSTGRES_DB_USER}
+      POSTGRES_DB_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: news-feed-service
+      AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
+      AUTH_ISSUER: auth-svc
+      AUTH_AUDIENCE: news-feed
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_SERVICE_NAME: news-feed-monolith
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  outbox-relay:
+    image: news-feed/monolith:local
+    depends_on: { monolith: { condition: service_healthy } }
+    environment:
+      NODE_ENV: production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_SERVICE_NAME: outbox-relay
+      POSTGRES_DB_HOST: postgres
+      POSTGRES_DB_USER: ${POSTGRES_DB_USER}
+      POSTGRES_DB_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: news-feed-service
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+    command: ['node', '--import', './dist/src/lib/tracing.js', 'dist/workers/outbox-relay.js']
+
+  comments-service:
+    build: { context: ., dockerfile: services/comments-service/Dockerfile }
+    image: news-feed/comments-service:local
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    expose: ['3001']
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      SERVICE_NAME: comments-svc
+      MONGO_DB_HOST: mongodb
+      MONGO_DB_PORT: 27017
+      MONGO_DB_USER: ${MONGO_DB_USER}
+      MONGO_DB_PASSWORD: ${MONGO_DB_PASSWORD}
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: news-feed-service
+      AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
+      AUTH_ISSUER: auth-svc
+      AUTH_AUDIENCE: news-feed
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_SERVICE_NAME: comments-svc
+    depends_on:
+      mongodb: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  fan-out-service:
+    build: { context: ., dockerfile: services/fan-out-service/Dockerfile }
+    image: news-feed/fan-out-service:local
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    expose: ['3004']
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      SERVICE_NAME: fan-out-service
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: news-feed-service
+      AUTH_JWKS_URL: http://auth-service:3002/.well-known/jwks.json
+      AUTH_ISSUER: auth-svc
+      AUTH_AUDIENCE: news-feed
+      MONOLITH_URL: http://monolith:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_SERVICE_NAME: fan-out-service
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+      monolith: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3004/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
 volumes:
   postgres_data:

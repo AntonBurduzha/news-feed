@@ -1,9 +1,11 @@
 import type { Server } from 'node:http';
+import { sleep } from '@news-feed/runtime';
 import app from '@/app';
 import { env } from '@/config/env';
 import { checkPostgresConnection, disconnectPostgres, startPgPoolMetrics } from '@/db/postgres';
 import { connectRedis, disconnectRedis, isRedisHealthy } from '@/db/redis';
 import { backgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
+import { beginDraining, isDraining } from '@/lib/lifecycle';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
 
@@ -33,10 +35,36 @@ async function start(): Promise<void> {
 	startSupervisorMetrics();
 }
 
-async function shutdown(reason: string, error?: unknown): Promise<void> {
-	if (backgroundSupervisor.isShuttingDown()) {
+async function closeHttpServer(): Promise<void> {
+	if (!server) {
 		return;
 	}
+	const httpServer = server;
+
+	await new Promise<void>(resolve => {
+		const forceClose = setTimeout(() => {
+			logger.warn(
+				{ timeoutMs: env.SHUTDOWN_TIMEOUT_MS },
+				'In-flight requests did not finish in time; destroying remaining connections',
+			);
+			httpServer.closeAllConnections();
+		}, env.SHUTDOWN_TIMEOUT_MS);
+		forceClose.unref();
+
+		httpServer.close(() => {
+			clearTimeout(forceClose);
+			resolve();
+		});
+
+		httpServer.closeIdleConnections();
+	});
+}
+
+async function shutdown(reason: string, error?: unknown): Promise<void> {
+	if (isDraining()) {
+		return;
+	}
+	beginDraining();
 
 	if (error) {
 		logger.error({ err: normalizeError(error), reason }, 'Shutting down after error');
@@ -44,15 +72,13 @@ async function shutdown(reason: string, error?: unknown): Promise<void> {
 		logger.info({ reason }, 'Shutting down');
 	}
 
-	await backgroundSupervisor.stop();
+	if (!error && env.SHUTDOWN_DRAIN_MS > 0) {
+		logger.info({ drainMs: env.SHUTDOWN_DRAIN_MS }, 'Draining: /readyz returns 503');
+		await sleep(env.SHUTDOWN_DRAIN_MS);
+	}
 
-	await new Promise<void>(resolve => {
-		if (!server) {
-			resolve();
-			return;
-		}
-		server.close(() => resolve());
-	});
+	await closeHttpServer();
+	await backgroundSupervisor.stop();
 
 	const disposables: Array<[string, () => Promise<unknown>]> = [
 		['Postgres pool', () => disconnectPostgres()],

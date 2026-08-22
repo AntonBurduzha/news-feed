@@ -1,0 +1,29 @@
+# artifacts
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+
+# environment variables
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# noise
+.git
+.github
+logs
+docs
+README.md
+LICENSE.txt
+**/.DS_Store
+.vscode
+.claude
+.npm-cache
+
+# infrastructure
+infra
+docker-compose*.yml
+**/Dockerfile
+**/*.md

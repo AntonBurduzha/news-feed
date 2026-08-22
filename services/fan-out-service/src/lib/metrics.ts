@@ -1,6 +1,6 @@
 import client from 'prom-client';
 
-client.collectDefaultMetrics({ prefix: 'nodejs_' });
+client.collectDefaultMetrics();
 
 export const httpRequestsTotal = new client.Counter({
 	name: 'http_requests_total',

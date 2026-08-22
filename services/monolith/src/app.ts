@@ -12,7 +12,6 @@ import healthRoute from '@/routes/health.route';
 import userRoutes from '@/modules/users/users.routes';
 import postRoutes from '@/modules/posts/posts.routes';
 import followRoutes from '@/modules/follow/follow.routes';
-import commentProxy from '@/modules/comments/comments.proxy';
 import metricsRoute from '@/routes/metrics.route';
 import internalRoutes from '@/modules/internal/internal.routes';
 // import testRoute from '@/routes/test.route';
@@ -66,7 +65,6 @@ app.use((req, _res, next) => {
 app.use('/users', userRoutes);
 app.use('/posts', postRoutes);
 app.use('/follows', followRoutes);
-app.use('/comments', commentProxy);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
