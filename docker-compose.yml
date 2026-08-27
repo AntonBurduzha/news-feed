@@ -154,6 +154,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_ISSUER: auth-svc
       JWT_AUDIENCE: news-feed
+      SHUTDOWN_DRAIN_MS: '5000'
+      SHUTDOWN_TIMEOUT_MS: '10000'
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
       OTEL_SERVICE_NAME: auth-svc
     depends_on:
@@ -223,6 +225,7 @@ services:
   outbox-relay:
     image: news-feed/monolith:local
     depends_on: { monolith: { condition: service_healthy } }
+    expose: ['3010']
     environment:
       NODE_ENV: production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317

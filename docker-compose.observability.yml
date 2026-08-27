@@ -1,20 +1,10 @@
-# Observability stack — run alongside docker-compose.yml with:
-#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
-#
-# Architecture:
-#   Services (host) → Alloy → Loki (logs) + Mimir (metrics) + Tempo (traces) → Grafana (UI)
-#
-# Access:
-#   Grafana UI:  http://localhost:3003  (anonymous admin, no login needed)
-#   Alloy UI:    http://localhost:12345 (verify scrape targets and pipeline health)
-#   Loki API:    http://localhost:3100
-#   Mimir API:   http://localhost:9009
-#   Tempo API:   http://localhost:3200
+# Grafana UI: http://localhost:3003  (anonymous admin, no login needed)
+# Alloy UI: http://localhost:12345 (verify scrape targets and pipeline health)
+# Loki API: http://localhost:3100
+# Mimir API: http://localhost:9009
+# Tempo API: http://localhost:3200
 
 services:
-
-  # --- Loki: log aggregation ---
-  # Stores and indexes log lines pushed by Alloy. Grafana queries logs via LogQL.
   loki:
     image: grafana/loki:3.0.0
     ports:
@@ -24,8 +14,6 @@ services:
       - loki_data:/loki # persistent log storage
     command: -config.file=/etc/loki/local-config.yaml
 
-  # --- Mimir: Prometheus-compatible metrics storage ---
-  # Receives metric samples via remote-write from Alloy. Grafana queries with PromQL.
   mimir:
     image: grafana/mimir:2.12.0
     ports:
@@ -35,47 +23,43 @@ services:
       - mimir_data:/data # persistent metrics storage
     command: -config.file=/etc/mimir.yaml
 
-  # --- Tempo: distributed tracing backend ---
-  # Stores spans sent via OTLP from Alloy. Grafana queries traces via TraceQL.
   tempo:
     image: grafana/tempo:2.4.0
     ports:
-      - '3200:3200' # Tempo HTTP API — Grafana trace queries
-      - '4317:4317' # OTLP gRPC — services send spans here via Alloy
-      - '4318:4318' # OTLP HTTP — alternative to gRPC
+      - '3200:3200'
+      - '4317:4317'
+      - '4318:4318'
     volumes:
       - ./infra/tempo/tempo-config.yaml:/etc/tempo.yaml
-      - tempo_data:/tmp/tempo # persistent trace storage
+      - tempo_data:/tmp/tempo
     command: -config.file=/etc/tempo.yaml
 
-  # --- Grafana: unified observability UI ---
-  # Dashboards, Explore, and alerting for logs, metrics, and traces.
   grafana:
     image: grafana/grafana:11.0.0
     ports:
-      - '3003:3000' # host 3003 to avoid clash with monolith on 3000
+      - '3003:3000' # host 3003 to avoid colision with monolith on 3000
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: 'true'      # local dev — skip login screen
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin       # anonymous users get admin access in dev
+      GF_AUTH_ANONYMOUS_ENABLED: 'true' # skip login screen for dev
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin # admin access on dev
     volumes:
-      # Auto-provision datasources (Loki, Mimir, Tempo) on startup — no manual setup needed.
       - ./infra/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - grafana_data:/var/lib/grafana # persists dashboards and settings across restarts
+      - ./infra/grafana/provisioning/providers/dashboards.yaml:/etc/grafana/provisioning/dashboards/news-feed.yaml
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/dashboards
+      - grafana_data:/var/lib/grafana # persists settings and alert state across restarts
     depends_on:
       - loki
       - mimir
       - tempo
 
-  # --- Alloy: unified telemetry collector ---
-  # Replaces Promtail (logs) + Prometheus (metrics) + OTel Collector (traces)
-  # with a single binary. See infra/alloy/config.alloy for the pipeline config.
   alloy:
-    image: grafana/alloy:v1.0.0
+    image: grafana/alloy:v1.19.2
+    # The docker socket is owned by root:docker; without this Alloy gets EACCES.
+    user: root
     ports:
-      - '12345:12345' # Alloy UI — check scrape targets, pipeline health, errors
+      - '12345:12345'
     volumes:
-      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy        # pipeline config (logs + metrics + traces)
-      - ./logs:/var/log/news-feed:ro                                # host log files mounted read-only
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki
@@ -83,7 +67,7 @@ services:
       - tempo
 
 volumes:
-  loki_data:    # Loki log data
+  loki_data: # Loki log data
   grafana_data: # Grafana dashboards, settings, alert state
-  mimir_data:   # Mimir metrics TSDB blocks
-  tempo_data:   # Tempo trace blocks
+  mimir_data: # Mimir metrics TSDB blocks
+  tempo_data: # Tempo trace blocks

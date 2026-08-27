@@ -1,24 +1,37 @@
-// LOGS: tail host log files → push to Loki
-
-// Declare which log files to watch and tag each with a "service" label
-local.file_match "news_feed_logs" {
-  path_targets = [
-    { __path__ = "/var/log/news-feed/monolith.log",       service = "news-feed-monolith" },
-    { __path__ = "/var/log/news-feed/auth-svc.log",       service = "auth-svc"           },
-    { __path__ = "/var/log/news-feed/comments-svc.log",   service = "comments-svc"       },
-    { __path__ = "/var/log/news-feed/outbox-relay.log",   service = "outbox-relay"       },
-    { __path__ = "/var/log/news-feed/dlq-redrive.log",   service = "dlq-redrive"         },
-  ]
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "15s"
 }
 
-// Tail each discovered file, stream new lines into the processing pipeline
-loki.source.file "news_feed" {
-  targets    = local.file_match.news_feed_logs.targets
+discovery.relabel "news_feed" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "news-feed"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+// Read stdout/stderr of each container through the docker API
+loki.source.docker "news_feed" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.news_feed.output
   forward_to = [loki.process.news_feed.receiver]
 }
 
-// Parse JSON fields from each log line and promote them to Loki labels
-// Only "level" and "service" become labels (low cardinality)
+// Parse the JSON line; level/service become labels for low cardinality.
 loki.process "news_feed" {
   forward_to = [loki.write.default.receiver]
 
@@ -44,15 +57,13 @@ loki.write "default" {
 }
 
 
-// METRICS: scrape /metrics push to Mimir
-// Poll each service's /metrics endpoint every 15 seconds.
 prometheus.scrape "news_feed_services" {
   targets = [
-    { "__address__" = "host.docker.internal:3000", "service" = "news-feed-monolith" },
-    { "__address__" = "host.docker.internal:3001", "service" = "comments-svc"       },
-    { "__address__" = "host.docker.internal:3002", "service" = "auth-svc"           },
-    { "__address__" = "host.docker.internal:3010", "service" = "outbox-relay"       },
-    { "__address__" = "host.docker.internal:3011", "service" = "dlq-redrive"        },
+    { "__address__" = "monolith:3000",         "service" = "news-feed-monolith" },
+    { "__address__" = "comments-service:3001", "service" = "comments-svc"       },
+    { "__address__" = "auth-service:3002",     "service" = "auth-svc"           },
+    { "__address__" = "fan-out-service:3004",  "service" = "fan-out-service"    },
+    { "__address__" = "outbox-relay:3010",     "service" = "outbox-relay"       },
   ]
   scrape_interval = "15s"
   forward_to      = [prometheus.remote_write.mimir.receiver]
@@ -60,7 +71,7 @@ prometheus.scrape "news_feed_services" {
 
 prometheus.scrape "postgres" {
   targets = [
-    { "__address__" = "host.docker.internal:9187", "service" = "postgres" },
+    { "__address__" = "postgres-exporter:9187", "service" = "postgres" },
   ]
   scrape_interval = "30s"
   forward_to      = [prometheus.remote_write.mimir.receiver]
@@ -68,7 +79,7 @@ prometheus.scrape "postgres" {
 
 prometheus.scrape "mongodb" {
   targets = [
-    { "__address__" = "host.docker.internal:9216", "service" = "mongodb" },
+    { "__address__" = "mongodb-exporter:9216", "service" = "mongodb" },
   ]
   scrape_interval = "30s"
   forward_to      = [prometheus.remote_write.mimir.receiver]
@@ -76,7 +87,7 @@ prometheus.scrape "mongodb" {
 
 prometheus.scrape "kafka" {
   targets = [
-    { "__address__" = "host.docker.internal:9308", "service" = "kafka" },
+    { "__address__" = "kafka-exporter:9308", "service" = "kafka" },
   ]
   scrape_interval = "15s"
   forward_to      = [prometheus.remote_write.mimir.receiver]
@@ -89,8 +100,6 @@ prometheus.remote_write "mimir" {
 }
 
 
-// TRACES: receive OTLP spans → forward to Tempo
-// Listen for OpenTelemetry spans from services sent by gRPC on 4317
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -103,12 +112,11 @@ otelcol.receiver.otlp "default" {
   }
 }
 
-// Forward received spans to Tempo's OTLP gRPC endpoint
 otelcol.exporter.otlp "tempo" {
   client {
-    endpoint = "tempo:4317" // Tempo's distributor listens on 4317 inside Docker network
+    endpoint = "tempo:4317"
     tls {
-      insecure = true // no TLS needed between containers on the same Docker network
+      insecure = true
     }
   }
 }

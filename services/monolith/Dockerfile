@@ -28,6 +28,12 @@ RUN npm run build --workspace services/shared/contracts \
  && npm run build --workspace services/monolith
 
 
+FROM build AS migrate
+WORKDIR /app/services/monolith
+CMD ["npx", "node-pg-migrate", "up", \
+     "-m", "./dist/src/db/postgres/migrations", \
+     "--ignore-pattern", ".*\\.(d\\.ts|js\\.map)"]
+
 FROM base AS prod-deps
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./

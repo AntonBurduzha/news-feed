@@ -11,6 +11,7 @@ type SerializedHttpReq = {
 	url?: string;
 	remoteAddress?: string;
 	remotePort?: number;
+	raw?: { ip?: string };
 };
 
 type SerializedHttpRes = {
@@ -21,10 +22,13 @@ type SerializedHttpRes = {
 const INFRA_PATHS = new Set(['/metrics', '/healthz', '/readyz']);
 
 function slimAccessReqSerializer(req: SerializedHttpReq) {
+	const clientIp = req.raw?.ip ?? req.remoteAddress;
+
 	return {
 		id: req.id,
 		method: req.method,
 		url: req.url,
+		...(clientIp != null && clientIp !== '' ? { remoteAddress: clientIp } : {}),
 	};
 }
 
