@@ -144,4 +144,22 @@ describe('createAuthClient.verify', () => {
 		expect(mockClient.set).not.toHaveBeenCalled();
 		vi.useRealTimers();
 	});
+
+	test('rejects token that is not a JWT, even if it is in the cache', async () => {
+		const notAJwt = 'AbCdEf_ThisIsARefreshTokenNotAJwt';
+		mockClient.get.mockResolvedValue(JSON.stringify({ userId: 'victim-id' }));
+
+		await expect(authClient.verify(`Bearer ${notAJwt}`)).rejects.toThrow();
+		expect(mockClient.get).not.toHaveBeenCalled();
+		expect(mockJwtVerify).not.toHaveBeenCalled();
+	});
+
+	test('ignores cached value with incorrect form and verifies via JWKS', async () => {
+		mockClient.get.mockResolvedValue(JSON.stringify({ userId: 'x' }));
+		await expect(authClient.verify(`Bearer ${sampleToken}`)).resolves.toMatchObject({
+			userId: expect.any(String) as string,
+			tokenExp: expect.any(Number) as number,
+		});
+		expect(mockJwtVerify).toHaveBeenCalled();
+	});
 });

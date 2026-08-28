@@ -17,7 +17,6 @@ vi.mock('@/lib/tokens', () => ({
 	generateRefreshToken: vi.fn(),
 	hashRefreshToken: vi.fn(),
 }));
-vi.mock('@/db/redis', () => ({ cacheToken: vi.fn() }));
 vi.mock('bcrypt', async importOriginal => {
 	const actual = await importOriginal<typeof import('bcrypt')>();
 	return { ...actual, compare: vi.fn() };
@@ -29,10 +28,8 @@ import {
 	hashPassword,
 	signAccessToken,
 	generateRefreshToken,
-	ACCESS_TOKEN_TTL_SEC,
 	hashRefreshToken,
 } from '@/lib/tokens';
-import { cacheToken } from '@/db/redis';
 import bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
@@ -42,7 +39,6 @@ describe('AuthService', () => {
 	const getUserByRefreshTokenSpy = vi.spyOn(authRepositoryMock, 'getUserByRefreshToken');
 	const getUserByEmailSpy = vi.spyOn(authRepositoryMock, 'getUserByEmail');
 
-	const cacheTokenMock = vi.mocked(cacheToken);
 	const generateRefreshTokenMock = vi.mocked(generateRefreshToken);
 	const signAccessTokenMock = vi.mocked(signAccessToken);
 	const hashPasswordMock = vi.mocked(hashPassword);
@@ -73,11 +69,6 @@ describe('AuthService', () => {
 			tokenHash: refreshTokenData.tokenHash,
 			expiresAt: refreshTokenData.expiresAt,
 		});
-		expect(cacheTokenMock).toHaveBeenCalledWith(
-			refreshTokenData.raw,
-			user.user_id,
-			ACCESS_TOKEN_TTL_SEC,
-		);
 		expect(result).toMatchObject({
 			accessToken,
 			refreshToken: refreshTokenData.raw,
@@ -98,7 +89,6 @@ describe('AuthService', () => {
 		const result = await authService.refresh(refreshInput);
 		expect(hashRefreshTokenMock).toHaveBeenCalledWith(refreshInput.body.refreshToken);
 		expect(signAccessTokenMock).toHaveBeenCalledWith(user.user_id);
-		expect(cacheTokenMock).toHaveBeenCalledWith(accessToken, user.user_id, ACCESS_TOKEN_TTL_SEC);
 		expect(result).toMatchObject({ accessToken });
 	});
 
@@ -131,11 +121,6 @@ describe('AuthService', () => {
 			tokenHash: refreshTokenData.tokenHash,
 			expiresAt: refreshTokenData.expiresAt,
 		});
-		expect(cacheTokenMock).toHaveBeenCalledWith(
-			refreshTokenData.raw,
-			user.user_id,
-			ACCESS_TOKEN_TTL_SEC,
-		);
 		expect(result).toMatchObject({ accessToken, refreshToken: refreshTokenData.raw });
 	});
 

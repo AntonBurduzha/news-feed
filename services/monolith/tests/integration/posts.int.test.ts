@@ -11,10 +11,17 @@ const MISSING_POST_ID = '33333333-3333-4333-8333-333333333333';
 vi.mock('@news-feed/auth-client', () => ({
 	createAuthClient: () => ({
 		verify: vi.fn(),
-		middleware: () => (req: { user?: unknown }, _res: unknown, next: () => void) => {
-			req.user = { userId: USER_ID, tokenExp: 0 };
-			next();
-		},
+		middleware:
+			() =>
+			(
+				req: { headers: Record<string, string | undefined>; user?: unknown },
+				_res: unknown,
+				next: () => void,
+			) => {
+				const token = req.headers.authorization?.replace(/^Bearer /, '');
+				req.user = { userId: token || USER_ID, tokenExp: 0 };
+				next();
+			},
 		disconnect: vi.fn(),
 	}),
 }));
@@ -26,7 +33,7 @@ let db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] 
 let internalApiKey: string;
 
 function createPost(content: string) {
-	return request(app).post('/posts').send({ userId: USER_ID, content }).expect(201);
+	return request(app).post('/posts').send({ content }).expect(201);
 }
 
 beforeAll(async () => {
@@ -51,7 +58,7 @@ describe('Posts integration tests', () => {
 		test('creates the post and a pending post.created.v1 outbox row', async () => {
 			const response: { body: Post } = await request(app)
 				.post('/posts')
-				.send({ userId: USER_ID, content: 'integration test' })
+				.send({ content: 'integration test' })
 				.expect(201);
 
 			expect(response.body.id).toBeDefined();
@@ -75,7 +82,7 @@ describe('Posts integration tests', () => {
 		test('throws ValidationError when content is empty', async () => {
 			const response: { body: { error: string } } = await request(app)
 				.post('/posts')
-				.send({ userId: USER_ID, content: '' })
+				.send({ content: '' })
 				.expect(400);
 			expect(response.body.error).toBe('Validation failed');
 
@@ -86,7 +93,8 @@ describe('Posts integration tests', () => {
 		test('throws NotFoundError when the author does not exist', async () => {
 			await request(app)
 				.post('/posts')
-				.send({ userId: MISSING_USER_ID, content: 'hi' })
+				.set('Authorization', `Bearer ${MISSING_USER_ID}`)
+				.send({ content: 'hi' })
 				.expect(404);
 
 			const { rows } = await db.query('SELECT id FROM posts');
@@ -170,7 +178,7 @@ describe('Posts integration tests', () => {
 		test('deletes the post and writes a pending post.deleted.v1 outbox row with userId', async () => {
 			const response: { body: Post } = await request(app)
 				.post('/posts')
-				.send({ userId: USER_ID, content: 'to delete' })
+				.send({ content: 'to delete' })
 				.expect(201);
 
 			await request(app).delete(`/posts/${response.body.id}`).expect(204);

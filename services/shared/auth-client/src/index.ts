@@ -72,15 +72,20 @@ export function createAuthClient(cfg: {
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
 				const token = bearer.replace(/^Bearer\s+/i, '');
+				if (!/^[\w-]+\.[\w-]+\.[\w-]+$/.test(token)) {
+					throw new Error('Provided token is not a JWT');
+				}
 				try {
 					const cached = await redisClient.get(`auth:${token}`);
 					if (cached) {
-						span.addEvent('jwks.cache_hit');
-						redisCacheHitsTotal.inc({ operation: 'verify', service: metricLabel });
-						const ctx = JSON.parse(cached) as UserContext;
-						span.setAttribute('user.id', ctx.userId);
-						span.setAttribute('cache.hit', true);
-						return ctx;
+						const parsed = JSON.parse(cached) as Partial<UserContext>;
+						if (typeof parsed.userId === 'string' && typeof parsed.tokenExp === 'number') {
+							span.addEvent('jwks.cache_hit');
+							redisCacheHitsTotal.inc({ operation: 'verify', service: metricLabel });
+							span.setAttribute('user.id', parsed.userId);
+							span.setAttribute('cache.hit', true);
+							return parsed as UserContext;
+						}
 					}
 				} catch {
 					// Redis down, continue without caching

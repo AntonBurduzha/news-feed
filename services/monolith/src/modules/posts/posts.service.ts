@@ -10,13 +10,7 @@ import { postsRepository } from '@/modules/posts/posts.repository';
 import { messagesOutboxRepository } from '@/modules/messages-outbox/messages-outbox.repository';
 import type { CreateMessageOutboxInput } from '@/modules/messages-outbox/messages-outbox.types';
 import { userService } from '@/modules/users/users.service';
-import type {
-	CreatePostInput,
-	UpdatePostInput,
-	Post,
-	PostRow,
-	GetPostsResult,
-} from './posts.types';
+import type { UpdatePostInput, Post, PostRow, GetPostsResult } from './posts.types';
 import type { UsersPort } from './posts.ports';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -73,7 +67,15 @@ class PostService {
 		this.messagesOutboxRepository = messagesOutboxRepository;
 	}
 
-	async createPost(input: CreatePostInput): Promise<Post> {
+	private async assertOwnership(postId: string, actorId: string): Promise<PostRow> {
+		const post = await this.postRepository.findById(postId);
+		if (!post || post.user_id !== actorId) {
+			throw new NotFoundError(`Post ${postId} was not found`);
+		}
+		return post;
+	}
+
+	async createPost(input: { userId: string; content: string }): Promise<Post> {
 		const tracer = trace.getTracer('posts-service');
 		const span = tracer.startSpan('posts.createPost', {
 			attributes: { 'user.id': input.userId },
@@ -160,13 +162,14 @@ class PostService {
 		});
 	}
 
-	async updatePost(id: string, input: UpdatePostInput): Promise<Post> {
+	async updatePost(id: string, input: UpdatePostInput, actorId: string): Promise<Post> {
 		const tracer = trace.getTracer('posts-service');
 		const span = tracer.startSpan('posts.updatePost', {
-			attributes: { 'post.id': id },
+			attributes: { 'post.id': id, 'user.id': actorId },
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
+				await this.assertOwnership(id, actorId);
 				const updatedPost = await this.postRepository.update(id, input);
 				if (!updatedPost) {
 					throw new NotFoundError(`Post ${id} was not found`);
@@ -182,17 +185,14 @@ class PostService {
 		});
 	}
 
-	async deletePost(id: string): Promise<void> {
+	async deletePost(id: string, actorId: string): Promise<void> {
 		const tracer = trace.getTracer('posts-service');
 		const span = tracer.startSpan('posts.deletePost', {
-			attributes: { 'post.id': id },
+			attributes: { 'post.id': id, 'user.id': actorId },
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const existing = await this.postRepository.findById(id);
-				if (!existing) {
-					throw new NotFoundError(`Post ${id} was not found`);
-				}
+				const existing = await this.assertOwnership(id, actorId);
 				await withTransaction(async client => {
 					await this.postRepository.delete(id, client);
 					const correlationId = requestContext.getStore()?.correlationId ?? '';

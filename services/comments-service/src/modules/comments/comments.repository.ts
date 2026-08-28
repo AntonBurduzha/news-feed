@@ -1,9 +1,14 @@
 import { Comments } from '@/db/mongo/models/comments';
-import type { CreateCommentInput } from './comments.types';
+import type { Comment, CreateCommentInput } from './comments.types';
 
 class CommentRepository {
 	async create(input: CreateCommentInput) {
 		return Comments.create(input);
+	}
+
+	async findById(id: string): Promise<Comment | null> {
+		const comment = await Comments.findById(id).lean().exec();
+		return comment as Comment | null;
 	}
 
 	async findMany(postId: string, limit: number, cursor: string | null) {

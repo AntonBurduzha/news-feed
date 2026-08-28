@@ -80,16 +80,17 @@ describe('PostService.getPost', () => {
 describe('PostService.updatePost', () => {
 	beforeEach(() => vi.clearAllMocks());
 	test('returns updated post when row is present', async () => {
+		postsRepo.findById.mockResolvedValue(postFixture);
 		postsRepo.update.mockResolvedValue({ ...postFixture, content: 'x' });
-		const result = await postService.updatePost('post-1', { content: 'x' });
+		const result = await postService.updatePost('post-1', { content: 'x' }, 'user-1');
 		expect(result).toMatchObject({ id: 'post-1', userId: 'user-1', content: 'x' });
 	});
 
 	test('throws NotFoundError when row is missing', async () => {
 		postsRepo.update.mockResolvedValue(null);
-		await expect(postService.updatePost('missing', { content: 'x' })).rejects.toBeInstanceOf(
-			NotFoundError,
-		);
+		await expect(
+			postService.updatePost('missing', { content: 'x' }, 'user-1'),
+		).rejects.toBeInstanceOf(NotFoundError);
 	});
 });
 
@@ -100,14 +101,14 @@ describe('PostService.deletePost', () => {
 		vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
 		postsRepo.findById.mockResolvedValue(postFixture);
 		postsRepo.delete.mockResolvedValue(true);
-		await postService.deletePost('post-1');
+		await postService.deletePost('post-1', 'user-1');
 		expect(createOutboxMessage).toHaveBeenCalledWith(deletePostOutboxMessage, expect.anything());
 		vi.useRealTimers();
 	});
 
 	test('throws NotFoundError when row is missing', async () => {
 		postsRepo.findById.mockResolvedValue(null);
-		await expect(postService.deletePost('missing')).rejects.toBeInstanceOf(NotFoundError);
+		await expect(postService.deletePost('missing', 'user-1')).rejects.toBeInstanceOf(NotFoundError);
 		expect(createOutboxMessage).not.toHaveBeenCalled();
 	});
 });

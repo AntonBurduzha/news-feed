@@ -1,9 +1,9 @@
 import { PoolClient } from 'pg';
 import { db } from '@/db/postgres';
-import type { CreatePostInput, UpdatePostInput, PostRow, CursorParams } from './posts.types';
+import type { UpdatePostInput, PostRow, CursorParams } from './posts.types';
 
 class PostRepository {
-	async create(input: CreatePostInput, client?: PoolClient): Promise<PostRow> {
+	async create(input: { userId: string; content: string }, client?: PoolClient): Promise<PostRow> {
 		const connection = client ?? db;
 		const query =
 			'INSERT INTO posts (user_id, content) VALUES ($1, $2) RETURNING id, user_id, content, created_at, updated_at;';

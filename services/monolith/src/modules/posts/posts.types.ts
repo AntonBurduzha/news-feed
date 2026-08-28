@@ -19,11 +19,6 @@ export type GetPostsResult = {
 	nextCursor: string | null;
 };
 
-export type CreatePostInput = {
-	userId: string;
-	content: string;
-};
-
 export type UpdatePostInput = {
 	content: string;
 };

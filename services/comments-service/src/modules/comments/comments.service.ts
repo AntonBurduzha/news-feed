@@ -79,16 +79,17 @@ class CommentsService {
 		});
 	}
 
-	async deleteComment(id: string): Promise<void> {
+	async deleteComment(id: string, actorId: string): Promise<void> {
 		const span = tracer.startSpan('comments.deleteComment', {
-			attributes: { 'comment.id': id },
+			attributes: { 'comment.id': id, 'actor.id': actorId },
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const deleted = await commentsRepository.deleteById(id);
-				if (!deleted) {
+				const comment = await commentsRepository.findById(id);
+				if (!comment || comment.author.userId !== actorId) {
 					throw new NotFoundError(`Comment ${id} was not found`);
 				}
+				await commentsRepository.deleteById(id);
 				commentsDeletedTotal.inc({ service: env.SERVICE_NAME });
 			} catch (error) {
 				span.recordException(error as Error);

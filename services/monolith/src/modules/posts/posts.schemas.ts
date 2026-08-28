@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 const postBodySchema = z.object({
-	userId: z.uuid(),
 	content: z.string().trim().min(1).max(280),
 });
 
