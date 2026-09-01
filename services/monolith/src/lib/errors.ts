@@ -29,6 +29,12 @@ export class ValidationError extends AppError {
 	}
 }
 
+export class ConflictError extends AppError {
+	constructor(message = 'Resource already exists') {
+		super(message, httpStatus.CONFLICT);
+	}
+}
+
 export function normalizeError(error: unknown): Error {
 	if (error instanceof Error) {
 		return error;
@@ -40,6 +46,7 @@ export function normalizeError(error: unknown): Error {
 export function isRetryable(error: unknown): boolean {
 	if (error instanceof ValidationError) return false;
 	if (error instanceof NotFoundError) return false;
+	if (error instanceof ConflictError) return false;
 	if (error instanceof SyntaxError) return false;
 	return true;
 }

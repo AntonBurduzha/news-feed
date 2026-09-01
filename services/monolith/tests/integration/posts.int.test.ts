@@ -3,28 +3,16 @@ import request from 'supertest';
 import type { Post } from '@/modules/posts/posts.types';
 import type { MessageOutbox } from '@/modules/messages-outbox/messages-outbox.types';
 import { getTestApp } from './app-setup';
+import { setDefaultActor } from './auth-mock';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const MISSING_USER_ID = '22222222-2222-4222-8222-222222222222';
 const MISSING_POST_ID = '33333333-3333-4333-8333-333333333333';
 
-vi.mock('@news-feed/auth-client', () => ({
-	createAuthClient: () => ({
-		verify: vi.fn(),
-		middleware:
-			() =>
-			(
-				req: { headers: Record<string, string | undefined>; user?: unknown },
-				_res: unknown,
-				next: () => void,
-			) => {
-				const token = req.headers.authorization?.replace(/^Bearer /, '');
-				req.user = { userId: token || USER_ID, tokenExp: 0 };
-				next();
-			},
-		disconnect: vi.fn(),
-	}),
-}));
+vi.mock('@news-feed/auth-client', async () => {
+	const { createAuthClient } = await import('./auth-mock');
+	return { createAuthClient };
+});
 
 type PostsPage = { posts: Post[]; nextCursor: string | null };
 
@@ -37,6 +25,7 @@ function createPost(content: string) {
 }
 
 beforeAll(async () => {
+	setDefaultActor(USER_ID);
 	({ db } = await import('@/db/postgres'));
 	app = await getTestApp();
 	internalApiKey = process.env.INTERNAL_API_KEY as string;

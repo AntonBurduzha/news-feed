@@ -12,6 +12,10 @@ export type FollowRow = {
 	created_at: string;
 };
 
+export type CreateFollowRequest = {
+	followingId: string;
+};
+
 export type CreateFollowInput = {
 	followerId: string;
 	followingId: string;

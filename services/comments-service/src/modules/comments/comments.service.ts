@@ -1,6 +1,7 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { env } from '@/config/env';
 import { NotFoundError } from '@/lib/errors';
+import { createOwnershipGuard, type OwnershipGuard } from '@/lib/ownership';
 import { commentsCreatedTotal, commentsDeletedTotal } from '@/lib/metrics';
 import { postsProjectionRepository } from '@/modules/posts-projection/posts-projection.repository';
 import { commentsRepository } from './comments.repository';
@@ -25,6 +26,13 @@ function mapComment(doc: Record<string, unknown>): Comment {
 }
 
 class CommentsService {
+	/** A comment belongs to its author. */
+	private readonly assertOwnership: OwnershipGuard<Comment> = createOwnershipGuard({
+		resource: 'Comment',
+		findById: id => commentsRepository.findById(id),
+		ownerOf: doc => doc.author.userId,
+	});
+
 	async createComment(input: CreateCommentInput) {
 		const span = tracer.startSpan('comments.createComment', {
 			attributes: {
@@ -85,10 +93,7 @@ class CommentsService {
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const comment = await commentsRepository.findById(id);
-				if (!comment || comment.author.userId !== actorId) {
-					throw new NotFoundError(`Comment ${id} was not found`);
-				}
+				await this.assertOwnership(id, actorId);
 				await commentsRepository.deleteById(id);
 				commentsDeletedTotal.inc({ service: env.SERVICE_NAME });
 			} catch (error) {

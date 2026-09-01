@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 export const createFollowRequestSchema = z.object({
 	body: z.object({
-		followerId: z.uuid(),
 		followingId: z.uuid(),
 	}),
 });

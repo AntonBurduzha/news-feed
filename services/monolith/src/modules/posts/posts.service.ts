@@ -4,6 +4,7 @@ import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/db/postgres';
 import { NotFoundError, ValidationError } from '@/lib/errors';
+import { createOwnershipGuard, type OwnershipGuard } from '@/lib/ownership';
 import { postsCreatedTotal, postsDeletedTotal } from '@/lib/metrics';
 import { requestContext } from '@/middleware/context';
 import { postsRepository } from '@/modules/posts/posts.repository';
@@ -61,18 +62,16 @@ class PostService {
 	private readonly postRepository;
 	private readonly messagesOutboxRepository;
 	private readonly usersPort: UsersPort;
+	private readonly assertOwnership: OwnershipGuard<PostRow>;
 	constructor(usersPort: UsersPort) {
 		this.usersPort = usersPort;
 		this.postRepository = postsRepository;
 		this.messagesOutboxRepository = messagesOutboxRepository;
-	}
-
-	private async assertOwnership(postId: string, actorId: string): Promise<PostRow> {
-		const post = await this.postRepository.findById(postId);
-		if (!post || post.user_id !== actorId) {
-			throw new NotFoundError(`Post ${postId} was not found`);
-		}
-		return post;
+		this.assertOwnership = createOwnershipGuard({
+			resource: 'Post',
+			findById: id => this.postRepository.findById(id),
+			ownerOf: row => row.user_id,
+		});
 	}
 
 	async createPost(input: { userId: string; content: string }): Promise<Post> {

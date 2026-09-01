@@ -1,5 +1,7 @@
 import { PoolClient } from 'pg';
 import { db } from '@/db/postgres';
+import { isUniqueViolation } from '@/db/postgres/pg-errors';
+import { ConflictError } from '@/lib/errors';
 import type { CreateFollowInput, FollowRow } from './follow.types';
 
 class FollowsRepository {
@@ -7,11 +9,18 @@ class FollowsRepository {
 		const connection = client ?? db;
 		const query = `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) 
 									RETURNING id, follower_id, following_id, created_at;`;
-		const { rows } = await connection.query<FollowRow>(query, [
-			input.followerId,
-			input.followingId,
-		]);
-		return rows[0];
+		try {
+			const { rows } = await connection.query<FollowRow>(query, [
+				input.followerId,
+				input.followingId,
+			]);
+			return rows[0];
+		} catch (error) {
+			if (isUniqueViolation(error, 'unique_follower_following')) {
+				throw new ConflictError('Follow already exists');
+			}
+			throw error;
+		}
 	}
 
 	async findFollowersByFollowingId(followingId: string): Promise<string[]> {

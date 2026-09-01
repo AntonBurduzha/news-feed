@@ -1,4 +1,4 @@
-import type { CommentAuthor, Comment } from './comments.schemas';
+import type { CommentAuthor, CommentAuthorProfile, Comment } from './comments.schemas';
 
 export type CreateCommentInput = {
 	postId: string;
@@ -16,4 +16,4 @@ export type GetCommentsResult = {
 	nextCursor: string | null;
 };
 
-export type { CommentAuthor, Comment };
+export type { CommentAuthor, CommentAuthorProfile, Comment };

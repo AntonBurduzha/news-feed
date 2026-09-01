@@ -328,13 +328,13 @@ Access tokens live 5 minutes; refresh tokens 7 days (hashed into `refresh_tokens
 | `PUT`    | `/users/:id`        | yes  | `{ name (3–30), email }`                        | `200` user                                                                      |
 | `DELETE` | `/users/:id`        | yes  | uuid                                            | `204` — emits `user.deleted.v1`                                                 |
 | `PUT`    | `/users/:id/avatar` | yes  | multipart, field `avatar`, png/jpeg/webp ≤ 1 MB | `200 { avatarUrl }`                                                             |
-| `POST`   | `/posts`            | yes  | `{ userId, content (1–280) }`                   | `201` post — emits `post.created.v1`                                            |
+| `POST`   | `/posts`            | yes  | `{ content (1–280) }` — author taken from token | `201` post — emits `post.created.v1`                                            |
 | `GET`    | `/posts/:id`        | yes  | uuid                                            | `200` post                                                                      |
-| `PUT`    | `/posts/:id`        | yes  | `{ userId, content }`                           | `200` post                                                                      |
-| `DELETE` | `/posts/:id`        | yes  | uuid                                            | `204` — emits `post.deleted.v1`                                                 |
-| `POST`   | `/follows`          | yes  | `{ followerId, followingId }`                   | `201` — emits `follow.changed.v1`                                               |
+| `PUT`    | `/posts/:id`        | yes  | `{ content }` — author only                     | `200` post, `404` if not yours                                                  |
+| `DELETE` | `/posts/:id`        | yes  | uuid                                            | `204` — emits `post.deleted.v1`, `404` if not yours                             |
+| `POST`   | `/follows`          | yes  | `{ followingId }` — follower taken from token   | `201` — emits `follow.changed.v1`; `400` self-follow, `409` duplicate           |
 | `GET`    | `/follows/:id`      | yes  | uuid of the followee                            | `200` follower ids                                                              |
-| `DELETE` | `/follows/:id`      | yes  | uuid                                            | `204` — emits `follow.changed.v1`                                               |
+| `DELETE` | `/follows/:id`      | yes  | uuid of the follow row                          | `204` — emits `follow.changed.v1`, `404` if not yours                           |
 | `*`      | `/comments/*`       | yes  | —                                               | transparently proxied to comments-service (10s timeout, `504`/`502` on failure) |
 
 **Internal routes** — service-to-service only, guarded by a timing-safe `x-internal-api-key` header instead of a JWT:
@@ -350,9 +350,9 @@ Access tokens live 5 minutes; refresh tokens 7 days (hashed into `refresh_tokens
 
 | Method   | Path                | Auth | Body / query                                                       | Response                       |
 | -------- | ------------------- | ---- | ------------------------------------------------------------------ | ------------------------------ |
-| `POST`   | `/comments`         | yes  | `{ postId, author: { userId, name, avatarUrl }, content (1–280) }` | `201` comment                  |
+| `POST`   | `/comments`         | yes  | `{ postId, author: { name, avatarUrl }, content (1–280) }`         | `201` comment — author id from token |
 | `GET`    | `/comments/:postId` | yes  | `?limit=10&cursor=`                                                | `200 { comments, nextCursor }` |
-| `DELETE` | `/comments/:id`     | yes  | —                                                                  | `204`                          |
+| `DELETE` | `/comments/:id`     | yes  | —                                                                  | `204`, `404` if not yours      |
 
 ### fan-out-service — `http://localhost:3004`
 

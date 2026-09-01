@@ -3,7 +3,8 @@ import { env } from '@/config/env';
 import { withTransaction } from '@/db/postgres';
 import { requestContext } from '@/middleware/context';
 import { KafkaTopics } from '@news-feed/contracts';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError, ValidationError } from '@/lib/errors';
+import { createOwnershipGuard, type OwnershipGuard } from '@/lib/ownership';
 import { logger } from '@/lib/logger';
 import { followsCreatedTotal, followsDeletedTotal } from '@/lib/metrics';
 import { userService } from '@/modules/users/users.service';
@@ -28,10 +29,16 @@ class FollowService {
 	private readonly followsRepository;
 	private readonly messagesOutboxRepository;
 	private readonly usersPort: UsersPort;
+	private readonly assertOwnership: OwnershipGuard<FollowRow>;
 	constructor(usersPort: UsersPort) {
 		this.usersPort = usersPort;
 		this.followsRepository = followsRepository;
 		this.messagesOutboxRepository = messagesOutboxRepository;
+		this.assertOwnership = createOwnershipGuard({
+			resource: 'Follow',
+			findById: id => this.followsRepository.findById(id),
+			ownerOf: row => row.follower_id,
+		});
 	}
 
 	async createFollow(input: CreateFollowInput): Promise<Follow> {
@@ -43,14 +50,11 @@ class FollowService {
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const follower = await this.usersPort.getUser(input.followerId);
-				if (!follower) {
-					throw new NotFoundError(`Follower ${input.followerId} was not found`);
+				if (input.followerId === input.followingId) {
+					throw new ValidationError('User cannot follow itself');
 				}
-				const following = await this.usersPort.getUser(input.followingId);
-				if (!following) {
-					throw new NotFoundError(`Following ${input.followingId} was not found`);
-				}
+				await this.usersPort.getUser(input.followerId);
+				await this.usersPort.getUser(input.followingId);
 				const result = await withTransaction(async client => {
 					const createdFollow = await this.followsRepository.create(input, client);
 					const correlationId = requestContext.getStore()?.correlationId ?? '';
@@ -100,16 +104,13 @@ class FollowService {
 		return following;
 	}
 
-	async deleteFollow(id: string): Promise<void> {
+	async deleteFollow(id: string, userId: string): Promise<void> {
 		const span = tracer.startSpan('follow.deleteFollow', {
-			attributes: { 'follow.id': id },
+			attributes: { 'follow.id': id, 'user.id': userId },
 		});
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
-				const follow = await this.followsRepository.findById(id);
-				if (!follow) {
-					throw new NotFoundError(`Follow ${id} was not found`);
-				}
+				const follow = await this.assertOwnership(id, userId);
 				await withTransaction(async client => {
 					const followIsDeleted = await this.followsRepository.delete(id, client);
 					if (!followIsDeleted) {
