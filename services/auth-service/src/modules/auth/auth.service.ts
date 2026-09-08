@@ -31,9 +31,7 @@ class AuthService {
 	}
 
 	async register(input: RegisterRequest): Promise<RegisterResult> {
-		const span = tracer.startSpan('auth.register', {
-			attributes: { 'auth.email': input.body.email },
-		});
+		const span = tracer.startSpan('auth.register');
 		return context.with(trace.setSpan(context.active(), span), async () => {
 			try {
 				const passwordHash = await hashPassword(input.body.password);
@@ -75,13 +73,13 @@ class AuthService {
 			try {
 				const user = await this.authRepository.getUserByEmail(input.body.email);
 				if (!user) {
-					logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
+					logger.warn({ reason: 'invalid_credentials' }, 'Auth failure');
 					authFailuresTotal.inc({ reason: 'invalid_credentials', service: env.SERVICE_NAME });
 					throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 				}
 				const isValid = await bcrypt.compare(input.body.password, user.password_hash);
 				if (!isValid) {
-					logger.warn({ reason: 'invalid_credentials', email: input.body.email }, 'Auth failure');
+					logger.warn({ reason: 'invalid_credentials' }, 'Auth failure');
 					authFailuresTotal.inc({ reason: 'invalid_credentials', service: env.SERVICE_NAME });
 					throw new AppError('Invalid credentials', httpStatus.UNAUTHORIZED);
 				}

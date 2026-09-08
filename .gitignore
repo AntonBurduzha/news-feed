@@ -30,3 +30,6 @@ yarn-error.log*
 
 # Infra
 /infra/nginx/certs/
+
+# Secrets
+secrets/

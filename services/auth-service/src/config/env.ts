@@ -20,6 +20,10 @@ const envSchema = z.object({
 	JWT_AUDIENCE: z.string().min(1).default('news-feed'),
 	SHUTDOWN_DRAIN_MS: z.coerce.number().int().nonnegative().default(5000),
 	SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(10_000),
+	CORS_ALLOWED_ORIGINS: z.string().default(''),
+	JWT_PRIVATE_KEY_B64: z.string().min(1).optional(),
+	JWT_PUBLIC_KEY_B64: z.string().min(1).optional(),
+	JWT_KEY_ID: z.string().min(1).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

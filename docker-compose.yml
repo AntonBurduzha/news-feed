@@ -121,14 +121,25 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - '6379:6379'
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --maxmemory-samples 10
+      --save ""
+      --appendonly no
+    # ports:
+    #   - '6379:6379'
     # love this feature
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 768m
     volumes:
       - redis_data:/data
 
@@ -146,6 +157,10 @@ services:
       PORT: 3002
       SERVICE_NAME: auth-svc
       LOG_LEVEL: info
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64}
+      JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64}
+      JWT_KEY_ID: ${JWT_KEY_ID:-}
       POSTGRES_DB_HOST: postgres
       POSTGRES_DB_PORT: 5432
       POSTGRES_DB_USER: ${POSTGRES_DB_USER}
@@ -188,6 +203,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       SERVICE_NAME: news-feed-monolith
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       COMMENTS_SVC_URL: http://comments-service:3001
       POSTGRES_DB_HOST: postgres
       POSTGRES_DB_USER: ${POSTGRES_DB_USER}
@@ -252,6 +268,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       SERVICE_NAME: comments-svc
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       MONGO_DB_HOST: mongodb
       MONGO_DB_PORT: 27017
       MONGO_DB_USER: ${MONGO_DB_USER}
@@ -293,6 +310,7 @@ services:
       NODE_ENV: production
       PORT: 3004
       SERVICE_NAME: fan-out-service
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
       KAFKA_NEWS_FEED_SERVICE_CLIENT_ID: news-feed-service

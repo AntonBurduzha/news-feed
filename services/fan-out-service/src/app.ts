@@ -2,6 +2,7 @@ import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { buildCorsOptions } from '@news-feed/runtime';
 import healthRoute from '@/routes/health.route';
 import metricsRoute from '@/routes/metrics.route';
 import feedRoutes from '@/modules/feed/feed.routes';
@@ -33,7 +34,7 @@ app.use(contextMiddleware);
 app.use(httpLogger);
 app.use(metricsMiddleware);
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(buildCorsOptions(env.CORS_ALLOWED_ORIGINS)));
 app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 

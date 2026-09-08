@@ -1,8 +1,9 @@
 import type { Request, RequestHandler } from 'express';
+import { createHash } from 'node:crypto';
 import { createClient, type RedisClientType } from 'redis';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import { attachRedisLogging } from '@news-feed/runtime';
+import { attachRedisLogging, createRedisReconnectStrategy } from '@news-feed/runtime';
 import client from 'prom-client';
 
 export type UserContext = {
@@ -35,6 +36,8 @@ export type AuthClientLogger = {
 	debug?: (obj: Record<string, unknown>, msg: string) => void;
 };
 
+const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
 export function createAuthClient(cfg: {
 	jwksUrl: string;
 	issuer: string;
@@ -48,8 +51,8 @@ export function createAuthClient(cfg: {
 		url: cfg.redisUrl,
 		disableOfflineQueue: true,
 		socket: {
-			connectTimeout: 500,
-			reconnectStrategy: retries => Math.min(retries * 50, 2000),
+			connectTimeout: 2000,
+			reconnectStrategy: createRedisReconnectStrategy(),
 		},
 	});
 	const log: Required<Pick<AuthClientLogger, 'error' | 'warn' | 'info'>> &
@@ -76,7 +79,7 @@ export function createAuthClient(cfg: {
 					throw new Error('Provided token is not a JWT');
 				}
 				try {
-					const cached = await redisClient.get(`auth:${token}`);
+					const cached = await redisClient.get(`auth:${hashToken(token)}`);
 					if (cached) {
 						const parsed = JSON.parse(cached) as Partial<UserContext>;
 						if (typeof parsed.userId === 'string' && typeof parsed.tokenExp === 'number') {
@@ -105,7 +108,7 @@ export function createAuthClient(cfg: {
 				try {
 					const ttl = Math.max(0, Math.min(60, ctx.tokenExp - Math.floor(Date.now() / 1000)));
 					if (ttl > 0) {
-						await redisClient.set(`auth:${token}`, JSON.stringify(ctx), { EX: ttl });
+						await redisClient.set(`auth:${hashToken(token)}`, JSON.stringify(ctx), { EX: ttl });
 					}
 				} catch {
 					// Redis down, continue without caching

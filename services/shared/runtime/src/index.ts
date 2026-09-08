@@ -10,3 +10,5 @@ export { attachConnectionLogging, createKafkaLogCreator } from './kafka-logging.
 export { attachRedisLogging, isRedisDown } from './redis-logging.js';
 export type { RedisEventClient, RedisLoggingOptions } from './redis-logging.js';
 export { sleep } from './sleep.js';
+export { buildCorsOptions } from './cors-options.js';
+export { createRedisReconnectStrategy } from './redis-reconnect.js';

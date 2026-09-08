@@ -220,6 +220,29 @@ The defaults work out of the box for local development. `.env` files are gitigno
 - `INTERNAL_API_KEY` — identical in `monolith` and `fan-out-service`.
 - `AUTH_AUDIENCE` — identical in `monolith`, `comments-service` and `fan-out-service`, and equal to auth-service's `JWT_AUDIENCE`. An access token carries one `aud` claim, so a per-service audience makes every request 401.
 
+**Generate the JWT signing key.** auth-service signs access tokens with RS256 and reads the key
+pair from its environment, not from disk. Generate it once and append it to the root `.env` — the
+one `docker-compose.yml` reads:
+
+```sh
+mkdir -p ./secrets
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out ./secrets/jwt-private.pem
+openssl rsa -pubout -in ./secrets/jwt-private.pem -out ./secrets/jwt-public.pem
+
+{
+  echo "JWT_PRIVATE_KEY_B64=$(base64 < ./secrets/jwt-private.pem | tr -d '\n')"
+  echo "JWT_PUBLIC_KEY_B64=$(base64 < ./secrets/jwt-public.pem | tr -d '\n')"
+} >> .env
+```
+
+The PEM is base64-encoded so a multi-line value survives `.env` and compose interpolation.
+`secrets/` is gitignored.
+
+Skipping this is fine for a single local process: auth-service falls back to an ephemeral pair
+generated at boot. That fallback is development-only — a restart invalidates every token it has
+issued, and two replicas sign with different keys, so each rejects the other's tokens. Under
+`NODE_ENV=production` the service refuses to start without the key rather than falling back.
+
 ### 2. Start infrastructure
 
 ```sh
@@ -405,7 +428,7 @@ Reactions:
 
 **DLQ and redrive.** Consumers wrap each handler in `withRetry`; on exhaustion the message goes to `app-dlq` with the original topic and failure reason in headers. `dlq-redrive` republishes it to the original topic, so a fix-and-replay needs no manual Kafka surgery.
 
-**Stateless auth.** auth-service holds the only private key and publishes its public half at `/.well-known/jwks.json`. Other services never call it per request: `@news-feed/auth-client` verifies signatures locally against the cached JWKS and memoises verified tokens in Redis for up to 60s. If Redis is down, verification still succeeds — only the cache is skipped.
+**Stateless auth.** auth-service holds the only private key and publishes its public half at `/.well-known/jwks.json`. The pair is supplied as base64 PEM in `JWT_PRIVATE_KEY_B64` / `JWT_PUBLIC_KEY_B64`, so it outlives any single process and is identical across replicas; the `kid` defaults to a SHA-256 fingerprint of the public key, which keeps the identifier in lockstep with the key it names. Other services never call it per request: `@news-feed/auth-client` verifies signatures locally against the cached JWKS and memoises verified tokens in Redis for up to 60s. If Redis is down, verification still succeeds — only the cache is skipped.
 
 **Cursor pagination.** Keyset, not offset: a cursor is a base64 `{ createdAt, id }`, and queries fetch `limit + 1` rows to decide whether a next page exists. Stable under concurrent inserts and index-friendly at depth.
 
@@ -481,6 +504,9 @@ npm run migrate:postgres:down
 | `REDIS_URL`                                         | no       | `redis://localhost:6379` |
 | `JWT_ISSUER`                                        | no       | `auth-svc`               |
 | `JWT_AUDIENCE`                                      | no       | `news-feed`              |
+| `JWT_PRIVATE_KEY_B64`                               | in prod  | — (dev: ephemeral pair)  |
+| `JWT_PUBLIC_KEY_B64`                                | in prod  | — (dev: ephemeral pair)  |
+| `JWT_KEY_ID`                                        | no       | public-key fingerprint   |
 | `NODE_ENV`, `LOG_LEVEL`, `LOG_HTTP_INFRA`, `OTEL_*` | no       | as above                 |
 
 ### comments-service (`services/comments-service/.env`)

@@ -51,14 +51,19 @@ const baseOptions = {
 	},
 	redact: {
 		paths: [
-			'req.headers.authorization',
-			'req.headers.cookie',
+			'password',
 			'*.password',
-			'*.token',
-			'*.accessToken',
+			'req.body.password',
+			'email',
+			'*.email',
+			'req.body.email',
+			'user.email',
+			'refreshToken',
 			'*.refreshToken',
+			'req.headers.authorization',
+			'req.headers["x-internal-api-key"]',
 		],
-		censor: '[REDACTED]',
+		censor: '[Redacted]',
 	},
 };
 

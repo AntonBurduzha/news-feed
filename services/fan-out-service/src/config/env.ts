@@ -18,6 +18,7 @@ const envSchema = z.object({
 	KAFKA_BROKERS: z.string().optional(),
 	MONOLITH_URL: z.string().min(1),
 	INTERNAL_API_KEY: z.string().min(1),
+	CORS_ALLOWED_ORIGINS: z.string().default(''),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

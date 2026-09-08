@@ -29,6 +29,7 @@ const envSchema = z.object({
 	KAFKA_BROKERS: z.string().optional(),
 	AWS_REGION: z.string().min(1),
 	AWS_BUCKET_NAME: z.string().min(1),
+	CORS_ALLOWED_ORIGINS: z.string().default(''),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

@@ -1,12 +1,14 @@
 import { createClient, type RedisClientType } from 'redis';
-import { attachRedisLogging } from '@news-feed/runtime';
+import { attachRedisLogging, createRedisReconnectStrategy } from '@news-feed/runtime';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 
 export const redisClient: RedisClientType = createClient({
 	url: env.REDIS_URL,
+	disableOfflineQueue: true,
 	socket: {
-		reconnectStrategy: retries => Math.min(retries * 50, 2_000),
+		connectTimeout: 2000,
+		reconnectStrategy: createRedisReconnectStrategy(),
 	},
 });
 
