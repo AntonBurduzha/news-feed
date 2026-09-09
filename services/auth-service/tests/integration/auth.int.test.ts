@@ -13,6 +13,14 @@ beforeAll(async () => {
 describe('Auth integration tests', () => {
 	const credentials = authFixtures.credentials;
 
+	async function issueRefreshToken(): Promise<string> {
+		const response: { body: LoginResult } = await request(app)
+			.post('/auth/login')
+			.send(credentials)
+			.expect(200);
+		return response.body.refreshToken;
+	}
+
 	describe('/auth/register', () => {
 		test('register a new user and issues tokens on success', async () => {
 			const response: { body: RegisterResult } = await request(app)
@@ -69,20 +77,17 @@ describe('Auth integration tests', () => {
 	});
 
 	describe('/auth/refresh', () => {
-		let refreshToken: string = '';
-		beforeAll(async () => {
-			const response: { body: LoginResult } = await request(app)
-				.post('/auth/login')
-				.send(credentials)
-				.expect(200);
-			refreshToken = response.body.refreshToken;
-		});
-		test('issues new access token on successful refresh', async () => {
+		test('issues a new access token and rotates the refresh token', async () => {
+			const refreshToken = await issueRefreshToken();
+
 			const response: { body: RefreshResult } = await request(app)
 				.post('/auth/refresh')
 				.send({ refreshToken })
 				.expect(200);
+
 			expect(response.body.accessToken).toBeDefined();
+			expect(response.body.refreshToken).toBeDefined();
+			expect(response.body.refreshToken).not.toBe(refreshToken);
 		});
 
 		test('throws Invalid refresh token when using invalid refresh token', async () => {
@@ -91,6 +96,54 @@ describe('Auth integration tests', () => {
 				.send({ refreshToken: 'invalid-refresh-token' })
 				.expect(401);
 			expect(response.body.error).toBe('Invalid refresh token');
+		});
+
+		test('replaying a rotated token revokes the whole family', async () => {
+			const refreshToken = await issueRefreshToken();
+			const rotated: { body: RefreshResult } = await request(app)
+				.post('/auth/refresh')
+				.send({ refreshToken })
+				.expect(200);
+
+			const replay: { body: { error: string } } = await request(app)
+				.post('/auth/refresh')
+				.send({ refreshToken })
+				.expect(401);
+			expect(replay.body.error).toBe('Invalid refresh token');
+
+			await request(app)
+				.post('/auth/refresh')
+				.send({ refreshToken: rotated.body.refreshToken })
+				.expect(401);
+		});
+	});
+
+	describe('/auth/logout', () => {
+		test('revokes the refresh token family', async () => {
+			const refreshToken = await issueRefreshToken();
+
+			await request(app).post('/auth/logout').send({ refreshToken }).expect(200);
+
+			const response: { body: { error: string } } = await request(app)
+				.post('/auth/refresh')
+				.send({ refreshToken })
+				.expect(401);
+			expect(response.body.error).toBe('Invalid refresh token');
+		});
+
+		test('succeeds for an unknown refresh token', async () => {
+			await request(app)
+				.post('/auth/logout')
+				.send({ refreshToken: 'unknown-refresh-token' })
+				.expect(200);
+		});
+
+		test('throws ValidationError when the refresh token is missing', async () => {
+			const response: { body: { error: string } } = await request(app)
+				.post('/auth/logout')
+				.send({})
+				.expect(400);
+			expect(response.body.error).toBe('Validation failed');
 		});
 	});
 });

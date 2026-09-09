@@ -67,6 +67,12 @@ export const outboxPublishFailuresTotal = new client.Counter({
 	labelNames: ['service', 'topic'] as const,
 });
 
+export const outboxStaleReclaimedTotal = new client.Counter({
+	name: 'outbox_stale_reclaimed_total',
+	help: 'Stale outbox messages reclaimed',
+	labelNames: ['service'] as const,
+});
+
 export const dlqMessagesTotal = new client.Counter({
 	name: 'dlq_messages_total',
 	help: 'Messages sent to the dead-letter queue',

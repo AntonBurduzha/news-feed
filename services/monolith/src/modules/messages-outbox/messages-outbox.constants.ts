@@ -4,4 +4,5 @@ export const MessageOutboxStatus: Record<string, MessageOutboxStatusType> = {
 	Pending: 'pending',
 	Sent: 'sent',
 	Failed: 'failed',
+	Claimed: 'claimed',
 };

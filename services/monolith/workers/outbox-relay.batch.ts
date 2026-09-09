@@ -1,5 +1,4 @@
-import { MessageOutboxStatus } from '@/modules/messages-outbox/messages-outbox.constants';
-import type { MessageOutbox, MessageOutboxStatus as MessageOutboxStatusType } from '@/modules/messages-outbox/messages-outbox.types';
+import type { MessageOutbox } from '@/modules/messages-outbox/messages-outbox.types';
 
 type KafkaMessage = {
 	key: string;
@@ -16,7 +15,8 @@ type TopicGroup = {
 export type OutboxRelayDeps = {
 	outboxService: {
 		findPendingMessages: () => Promise<MessageOutbox[]>;
-		updateMessageStatus: (ids: string[], status: MessageOutboxStatusType) => Promise<void>;
+		markSent: (ids: string[]) => Promise<void>;
+		markFailed: (ids: string[]) => Promise<void>;
 	};
 	producer: {
 		sendMessage: (topic: string, messages: KafkaMessage[]) => Promise<void>;
@@ -39,9 +39,7 @@ function groupPendingMessagesByTopic(pendingMessages: MessageOutbox[]): Map<stri
 			key: message.payload.key as string,
 			value: message.payload.value as string,
 			headers: { 'x-correlation-id': message.correlationId },
-			...(message.payload.partition
-				? { partition: message.payload.partition as number }
-				: {}),
+			...(message.payload.partition ? { partition: message.payload.partition as number } : {}),
 		};
 
 		const group = groups.get(message.topic);
@@ -68,6 +66,7 @@ export async function runOutboxRelayBatch(deps: OutboxRelayDeps): Promise<Outbox
 
 	const topicGroups = groupPendingMessagesByTopic(pendingMessages);
 	const successfullyPublishedIds: string[] = [];
+	const failedIds: string[] = [];
 	let publishedCount = 0;
 
 	for (const [topic, group] of topicGroups) {
@@ -78,15 +77,16 @@ export async function runOutboxRelayBatch(deps: OutboxRelayDeps): Promise<Outbox
 			publishedCount += group.messages.length;
 		} catch (error) {
 			deps.onPublishFailure?.(topic, error);
+			failedIds.push(...group.ids);
 			// rows for this topic stay pending — do not add to successfullyPublishedIds
 		}
 	}
 
 	if (successfullyPublishedIds.length > 0) {
-		await deps.outboxService.updateMessageStatus(
-			successfullyPublishedIds,
-			MessageOutboxStatus.Sent,
-		);
+		await deps.outboxService.markSent(successfullyPublishedIds);
+	}
+	if (failedIds.length > 0) {
+		await deps.outboxService.markFailed(failedIds);
 	}
 
 	return {

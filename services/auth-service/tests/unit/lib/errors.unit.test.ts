@@ -25,26 +25,15 @@ describe('normalizeError', () => {
 	});
 });
 
-describe('NotFoundError', () => {
-	test('extends AppError', () => {
-		expect(new NotFoundError()).toBeInstanceOf(AppError);
-		expect(new NotFoundError().statusCode).toBe(httpStatus.NOT_FOUND);
-		expect(new NotFoundError().message).toBe('Resource not found');
-	});
-});
-
-describe('ValidationError', () => {
-	test('extends AppError', () => {
-		expect(new ValidationError()).toBeInstanceOf(AppError);
-		expect(new ValidationError().statusCode).toBe(httpStatus.BAD_REQUEST);
-		expect(new ValidationError().message).toBe('Validation failed');
-	});
-});
-
-describe('ConflictError', () => {
-	test('extends AppError', () => {
-		expect(new ConflictError()).toBeInstanceOf(AppError);
-		expect(new ConflictError().statusCode).toBe(httpStatus.CONFLICT);
-		expect(new ConflictError().message).toBe('Conflict');
+describe('AppError subclasses', () => {
+	test.each([
+		[NotFoundError, httpStatus.NOT_FOUND, 'Resource not found'],
+		[ValidationError, httpStatus.BAD_REQUEST, 'Validation failed'],
+		[ConflictError, httpStatus.CONFLICT, 'Conflict'],
+	])('%s carries its status code and default message', (Subclass, statusCode, message) => {
+		const error = new Subclass();
+		expect(error).toBeInstanceOf(AppError);
+		expect(error.statusCode).toBe(statusCode);
+		expect(error.message).toBe(message);
 	});
 });

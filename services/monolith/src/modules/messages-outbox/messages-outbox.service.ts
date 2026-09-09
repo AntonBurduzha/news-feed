@@ -1,5 +1,5 @@
 import { messagesOutboxRepository } from './messages-outbox.repository';
-import { MessageOutbox, MessageOutboxRow, MessageOutboxStatus } from './messages-outbox.types';
+import { MessageOutbox, MessageOutboxRow } from './messages-outbox.types';
 
 function mapMessageOutbox(row: MessageOutboxRow): MessageOutbox {
 	return {
@@ -23,8 +23,16 @@ class MessagesOutboxService {
 		return rows.map(mapMessageOutbox);
 	}
 
-	async updateMessageStatus(ids: string[], status: MessageOutboxStatus): Promise<void> {
-		return this.repository.updateMessageStatus(ids, status);
+	async reclaimStaleMessages(): Promise<number> {
+		return this.repository.reclaimStaleMessages();
+	}
+
+	async markSent(ids: string[]): Promise<void> {
+		return this.repository.markSent(ids);
+	}
+
+	async markFailed(ids: string[]): Promise<void> {
+		return this.repository.markFailed(ids);
 	}
 
 	async cleanUpSentMessages(): Promise<number> {

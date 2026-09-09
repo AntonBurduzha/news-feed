@@ -1,4 +1,4 @@
-export type MessageOutboxStatus = 'pending' | 'sent' | 'failed';
+export type MessageOutboxStatus = 'pending' | 'sent' | 'failed' | 'claimed';
 
 export type CreateMessageOutboxInput = {
 	topic: string;

@@ -31,6 +31,8 @@ export type RefreshTokenRow = {
 	id: string;
 	user_id: string;
 	token_hash: string;
+	family_id: string;
+	used_at: Date | null;
 	expires_at: Date;
 	revoked_at: Date | null;
 	created_at: Date;
@@ -56,6 +58,7 @@ export type LoginResult = {
 
 export type RefreshResult = {
 	accessToken: string;
+	refreshToken: string;
 };
 
 export { LoginRequest, RegisterRequest, RefreshRequest };

@@ -5,6 +5,7 @@ import { env } from '@/config/env';
 import { checkPostgresConnection, disconnectPostgres, startPgPoolMetrics } from '@/db/postgres';
 import { connectRedis, disconnectRedis, isRedisHealthy } from '@/db/redis';
 import { backgroundSupervisor, startSupervisorMetrics } from '@/lib/background-supervisor';
+import { startRefreshTokensCleaner } from '@/lib/refresh-tokens-cleaner';
 import { beginDraining, isDraining } from '@/lib/lifecycle';
 import { logger } from '@/lib/logger';
 import { normalizeError } from '@/lib/errors';
@@ -33,6 +34,7 @@ async function start(): Promise<void> {
 	});
 
 	startSupervisorMetrics();
+	startRefreshTokensCleaner();
 }
 
 async function closeHttpServer(): Promise<void> {

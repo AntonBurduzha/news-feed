@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { authService } from './auth.service';
-import type { RegisterRequest, LoginRequest, RefreshRequest } from './auth.schemas';
+import type { RegisterRequest, LoginRequest, RefreshRequest, LogoutRequest } from './auth.schemas';
 
 export async function register(req: Request, res: Response) {
 	const body = req as RegisterRequest;
@@ -18,4 +18,10 @@ export async function refresh(req: Request, res: Response) {
 	const body = req as RefreshRequest;
 	const result = await authService.refresh(body);
 	res.json(result);
+}
+
+export async function logout(req: Request, res: Response) {
+	const body = req as LogoutRequest;
+	await authService.logout(body.body.refreshToken);
+	res.json({ success: true });
 }

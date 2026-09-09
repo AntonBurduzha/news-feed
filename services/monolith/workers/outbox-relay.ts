@@ -11,6 +11,7 @@ import {
 	outboxRelayDurationSeconds,
 	kafkaMessagesProducedTotal,
 	outboxPublishFailuresTotal,
+	outboxStaleReclaimedTotal,
 } from '@/lib/metrics';
 import { normalizeError } from '@/lib/errors';
 import { messagesOutboxService } from '@/modules/messages-outbox/messages-outbox.service';
@@ -18,6 +19,7 @@ import { runOutboxRelayBatch } from './outbox-relay.batch';
 
 const log = logger.child({ service: env.OUTBOX_RELAY_SERVICE_NAME });
 let outboxRelayInterval: NodeJS.Timeout | null = null;
+let reclaimInterval: NodeJS.Timeout | null = null;
 let inFlightBatch: Promise<void> | null = null;
 const tracer = trace.getTracer('outbox-relay');
 
@@ -118,12 +120,28 @@ async function startRelayLoop(): Promise<void> {
 			}
 		});
 	}, 5_000);
+
+	reclaimInterval = setInterval(() => {
+		void messagesOutboxService
+			.reclaimStaleMessages()
+			.then(count => {
+				if (count > 0) {
+					log.warn({ count }, 'Reclaimed stale claimed outbox rows');
+					outboxStaleReclaimedTotal.inc({ service: env.OUTBOX_RELAY_SERVICE_NAME }, count);
+				}
+			})
+			.catch(err => log.error({ err: normalizeError(err) }, 'Failed to reclaim stale rows'));
+	}, 60_000).unref();
 }
 
 async function stopRelayLoop(): Promise<void> {
 	if (outboxRelayInterval) {
 		clearInterval(outboxRelayInterval);
 		outboxRelayInterval = null;
+	}
+	if (reclaimInterval) {
+		clearInterval(reclaimInterval);
+		reclaimInterval = null;
 	}
 	await inFlightBatch;
 	inFlightBatch = null;

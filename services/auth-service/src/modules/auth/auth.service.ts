@@ -106,18 +106,82 @@ class AuthService {
 			try {
 				const { refreshToken } = input.body;
 				const tokenHash = hashRefreshToken(refreshToken);
-				const user = await this.authRepository.getUserByRefreshToken(tokenHash);
-				if (!user) {
+				const row = await this.authRepository.findRefreshToken(tokenHash);
+
+				if (!row) {
+					authFailuresTotal.inc({ reason: 'unknown_refresh_token', service: env.SERVICE_NAME });
 					throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
 				}
-				const accessToken = await signAccessToken(user.user_id);
+				if (row.used_at !== null) {
+					const revoked = await this.authRepository.revokeTokenFamily(row.family_id);
+					authFailuresTotal.inc({ reason: 'refresh_token_reuse', service: env.SERVICE_NAME });
+					span.setAttribute('security.token_reuse_detected', true);
+					logger.error(
+						{ userId: row.user_id, familyId: row.family_id, revokedCount: revoked },
+						'Token family revoked',
+					);
+					throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
+				}
+				if (row.revoked_at !== null) {
+					authFailuresTotal.inc({ reason: 'refresh_token_revoked', service: env.SERVICE_NAME });
+					throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
+				}
+				if (new Date(row.expires_at).getTime() <= Date.now()) {
+					authFailuresTotal.inc({ reason: 'refresh_token_expired', service: env.SERVICE_NAME });
+					throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
+				}
+
+				const claimed = await this.authRepository.markRefreshTokenUsed(row.id);
+				if (!claimed) {
+					await this.authRepository.revokeTokenFamily(row.family_id);
+					authFailuresTotal.inc({ reason: 'refresh_token_reuse', service: env.SERVICE_NAME });
+					throw new AppError('Invalid refresh token', httpStatus.UNAUTHORIZED);
+				}
+				const accessToken = await signAccessToken(row.user_id);
+				const {
+					raw: newRefreshToken,
+					tokenHash: newHash,
+					expiresAt,
+				} = await generateRefreshToken();
+				await this.authRepository.createRefreshToken({
+					userId: row.user_id,
+					tokenHash: newHash,
+					expiresAt,
+					familyId: row.family_id,
+				});
+
 				authTokensIssuedTotal.inc({ type: 'access', service: env.SERVICE_NAME });
-				span.setAttribute('user.id', user.user_id);
-				return { accessToken };
+				authTokensIssuedTotal.inc({ type: 'refresh', service: env.SERVICE_NAME });
+				span.setAttribute('user.id', row.user_id);
+				return { accessToken, refreshToken: newRefreshToken };
 			} catch (error) {
 				span.recordException(error as Error);
 				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
 				throw error;
+			} finally {
+				span.end();
+			}
+		});
+	}
+
+	async logout(refreshToken: string): Promise<void> {
+		const row = await this.authRepository.findRefreshToken(hashRefreshToken(refreshToken));
+		if (!row) return;
+		await this.authRepository.revokeTokenFamily(row.family_id);
+		logger.info({ userId: row.user_id }, 'User logged out');
+	}
+
+	async deleteExpiredTokens(): Promise<number> {
+		const span = tracer.startSpan('auth.deleteExpiredTokens');
+		return context.with(trace.setSpan(context.active(), span), async () => {
+			try {
+				const deletedCount = await this.authRepository.deleteExpiredTokens();
+				span.setAttribute('auth.deleted_count', deletedCount);
+				return deletedCount;
+			} catch (error) {
+				span.recordException(error as Error);
+				span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+				throw new AppError('Failed to delete expired tokens', httpStatus.INTERNAL_SERVER_ERROR);
 			} finally {
 				span.end();
 			}
