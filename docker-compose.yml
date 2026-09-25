@@ -69,10 +69,27 @@ services:
 
   postgres:
     image: postgres:15
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - wal_keep_size=512MB
+      - -c
+      - max_slot_wal_keep_size=2GB
+      - -c
+      - wal_log_hints=on
     environment:
       POSTGRES_USER: ${POSTGRES_DB_USER}
       POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB_NAME}
+      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
     ports:
       - '5432:5432'
     healthcheck:
@@ -82,6 +99,51 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./infra/postgres/primary/init-replication.sql:/docker-entrypoint-initdb.d/10-init-replication.sql:ro
+
+  postgres-replica:
+    image: postgres:15
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_USER: ${POSTGRES_DB_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB_NAME}
+      PRIMARY_HOST: postgres
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_SLOT: replica_1
+      PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+    ports:
+      - '5433:5432'
+    entrypoint: ['bash', '/usr/local/bin/replica-entrypoint.sh']
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - hot_standby_feedback=on
+      - -c
+      - max_standby_streaming_delay=30s
+      - -c
+      - cluster_name=postgres-replica
+      - -c
+      - wal_log_hints=on
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./infra/postgres/replica/entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -q && psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT pg_is_in_recovery()" | grep -q t',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -341,6 +403,7 @@ services:
 
 volumes:
   postgres_data:
+  postgres_replica_data:
   mongodb_data:
   redis_data:
   kafka_data:
